@@ -1,7 +1,15 @@
 let velocidadActual = 60;
 
 function generarDatoVehiculo() {
-    const aceleracion = (Math.random() * 2) - 1;
+    let aceleracion;
+
+    const evento = Math.random();
+
+    if (evento < 0.1) {
+        aceleracion = -3.5;
+    } else {
+        aceleracion = (Math.random() * 2) - 1;
+    }
 
     velocidadActual += aceleracion;
 
@@ -16,8 +24,8 @@ function generarDatoVehiculo() {
     };
 }
 
-console.log(generarDatoVehiculo());
-console.log(generarDatoVehiculo());
-console.log(generarDatoVehiculo());
-console.log(generarDatoVehiculo());
-console.log(generarDatoVehiculo());
+setInterval(() => {
+    const dato = generarDatoVehiculo();
+
+    console.log(dato);
+}, 1000);
