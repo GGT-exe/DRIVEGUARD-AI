@@ -7,7 +7,7 @@ const app = express();
 const prisma = new PrismaClient();
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 app.get('/', (req, res) => {
   res.send('DriveGuard API activa');
@@ -18,6 +18,25 @@ app.get('/conductores', async (req, res) => {
   try {
     const conductores = await prisma.conductores.findMany();
     res.json(conductores);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint para crear un incidente con la imagen capturada
+app.post('/incidentes', async (req, res) => {
+  try {
+    const { imagen, tipo, nivel_riesgo } = req.body;
+
+    const nuevoIncidente = await prisma.incidentes.create({
+      data: {
+        imagen_url: imagen, // por ahora guardamos el base64 directo aquí
+        tipo: tipo || 'deteccion_camara',
+        nivel_riesgo: nivel_riesgo || 'medio'
+      }
+    });
+
+    res.json(nuevoIncidente);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
