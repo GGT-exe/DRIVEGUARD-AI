@@ -29,3 +29,8 @@ setInterval(() => {
 
     console.log(dato);
 }, 1000);
+function generarDistanciaObstaculo() {
+    const distancia = Math.random() * 30;
+
+    return Number(distancia.toFixed(2));
+}
