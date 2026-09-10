@@ -1,0 +1,83 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model alertas_enviadas {
+  id                  String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  incidente_id        String?      @db.Uuid
+  conductor_id        String?      @db.Uuid
+  contacto_emergencia String?      @db.VarChar(150)
+  tipo_alerta         String?      @db.VarChar(50)
+  fecha_envio         DateTime?    @default(now()) @db.Timestamp(6)
+  estado              String?      @default("enviada") @db.VarChar(20)
+  conductores         conductores? @relation(fields: [conductor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  incidentes          incidentes?  @relation(fields: [incidente_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model conductores {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre             String               @db.VarChar(100)
+  correo             String               @unique @db.VarChar(150)
+  contrasena_hash    String
+  fecha_registro     DateTime?            @default(now()) @db.Timestamp(6)
+  alertas_enviadas   alertas_enviadas[]
+  recorridos         recorridos[]
+  reportes_seguridad reportes_seguridad[]
+}
+
+model incidentes {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recorrido_id     String?            @db.Uuid
+  tipo             String?            @db.VarChar(50)
+  nivel_riesgo     String?            @db.VarChar(20)
+  imagen_url       String?
+  fecha            DateTime?          @default(now()) @db.Timestamp(6)
+  alertas_enviadas alertas_enviadas[]
+  recorridos       recorridos?        @relation(fields: [recorrido_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model lecturas_sensor {
+  id           String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recorrido_id String?                  @db.Uuid
+  velocidad    Float?
+  aceleracion  Float?
+  ubicacion    Unsupported("geometry")?
+  timestamp    DateTime?                @default(now()) @db.Timestamp(6)
+  recorridos   recorridos?              @relation(fields: [recorrido_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model recorridos {
+  id              String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conductor_id    String?                  @db.Uuid
+  fecha_inicio    DateTime?                @default(now()) @db.Timestamp(6)
+  fecha_fin       DateTime?                @db.Timestamp(6)
+  ruta            Unsupported("geometry")?
+  incidentes      incidentes[]
+  lecturas_sensor lecturas_sensor[]
+  conductores     conductores?             @relation(fields: [conductor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model reportes_seguridad {
+  id                       String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conductor_id             String?      @db.Uuid
+  periodo_inicio           DateTime?    @db.Timestamp(6)
+  periodo_fin              DateTime?    @db.Timestamp(6)
+  nivel_seguridad_promedio Float?
+  total_incidentes         Int?         @default(0)
+  fecha_generacion         DateTime?    @default(now()) @db.Timestamp(6)
+  conductores              conductores? @relation(fields: [conductor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model spatial_ref_sys {
+  srid      Int     @id
+  auth_name String? @db.VarChar(256)
+  auth_srid Int?
+  srtext    String? @db.VarChar(2048)
+  proj4text String? @db.VarChar(2048)
+}
