@@ -33,17 +33,30 @@ function Camara() {
       return;
     }
 
-    // TODO: cuando el backend exista, reemplazar esta simulación por el fetch real:
-    //
-    // const respuesta = await fetch('http://localhost:PUERTO/api/incidentes', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ imagen: imagenCapturada })
-    // });
-    // const data = await respuesta.json();
+    try {
+      setEstadoEnvio('Enviando...');
 
-    console.log('SIMULACIÓN: enviando imagen al backend...', imagenCapturada.substring(0, 50) + '...');
-    setEstadoEnvio('Simulado: la imagen se enviaría al backend (aún no existe).');
+      const respuesta = await fetch('http://localhost:4000/incidentes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imagen: imagenCapturada,
+          tipo: 'deteccion_camara',
+          nivel_riesgo: 'medio'
+        })
+      });
+
+      const data = await respuesta.json();
+
+      if (!respuesta.ok) {
+        throw new Error(data.error || 'Error al guardar el incidente');
+      }
+
+      setEstadoEnvio(`Incidente guardado con id: ${data.id}`);
+    } catch (error) {
+      console.error(error);
+      setEstadoEnvio('Error al conectar con el backend: ' + error.message);
+    }
   };
 
   return (
