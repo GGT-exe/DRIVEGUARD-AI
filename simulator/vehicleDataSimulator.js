@@ -34,3 +34,16 @@ function generarDistanciaObstaculo() {
 
     return Number(distancia.toFixed(2));
 }
+function detectarObstaculo(distancia) {
+    const UMBRAL_RIESGO = 7;
+
+    return distancia < UMBRAL_RIESGO;
+}
+const distancia = generarDistanciaObstaculo();
+const riesgo = detectarObstaculo(distancia);
+
+console.log({
+    distanciaObstaculo: distancia,
+    riesgoColision: riesgo,
+    timestamp: Date.now()
+});
