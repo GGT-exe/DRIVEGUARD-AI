@@ -4,6 +4,7 @@ function Camara() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [imagenCapturada, setImagenCapturada] = useState(null);
+  const [estadoEnvio, setEstadoEnvio] = useState('');
 
   useEffect(() => {
     navigator.mediaDevices.getUserMedia({ video: true })
@@ -23,9 +24,26 @@ function Camara() {
 
     const dataUrl = canvas.toDataURL('image/png');
     setImagenCapturada(dataUrl);
-
-    // Guardado temporal
     localStorage.setItem('imagen_temporal', dataUrl);
+  };
+
+  const conectarConIncidente = async () => {
+    if (!imagenCapturada) {
+      setEstadoEnvio('Primero captura una imagen.');
+      return;
+    }
+
+    // TODO: cuando el backend exista, reemplazar esta simulación por el fetch real:
+    //
+    // const respuesta = await fetch('http://localhost:PUERTO/api/incidentes', {
+    //   method: 'POST',
+    //   headers: { 'Content-Type': 'application/json' },
+    //   body: JSON.stringify({ imagen: imagenCapturada })
+    // });
+    // const data = await respuesta.json();
+
+    console.log('SIMULACIÓN: enviando imagen al backend...', imagenCapturada.substring(0, 50) + '...');
+    setEstadoEnvio('Simulado: la imagen se enviaría al backend (aún no existe).');
   };
 
   return (
@@ -34,6 +52,7 @@ function Camara() {
       <video ref={videoRef} autoPlay playsInline width="400"></video>
       <br />
       <button onClick={capturarImagen}>Capturar imagen</button>
+      <button onClick={conectarConIncidente}>Conectar con incidente</button>
 
       <canvas ref={canvasRef} style={{ display: 'none' }}></canvas>
 
@@ -43,6 +62,8 @@ function Camara() {
           <img src={imagenCapturada} width="400" alt="Captura" />
         </div>
       )}
+
+      {estadoEnvio && <p><strong>{estadoEnvio}</strong></p>}
     </div>
   );
 }
