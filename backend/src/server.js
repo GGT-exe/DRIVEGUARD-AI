@@ -42,6 +42,26 @@ app.post('/incidentes', async (req, res) => {
   }
 });
 
+// Recibe una lectura de sensor (velocidad, aceleracion) desde el simulador
+app.post('/lecturas', async (req, res) => {
+  try {
+    const { velocidad, aceleracion } = req.body;
+
+    const nuevaLectura = await prisma.lecturas_sensor.create({
+      data: {
+        velocidad: velocidad,
+        aceleracion: aceleracion,
+      },
+    });
+
+    console.log('Lectura guardada:', nuevaLectura);
+    res.status(201).json(nuevaLectura);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
