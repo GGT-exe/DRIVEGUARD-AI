@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Prueba GPS - DriveGuard AI</title>
+</head>
+<body>
+  <h1>Prueba de captura GPS</h1>
+  <button id="btnCapturar">Compartir mi ubicación</button>
+  <p id="resultado"></p>
+
+  <script>
+    const RECORRIDO_ID = "d982b26e-5a7f-4238-9b4e-2d0ec08e2257"; // el mismo recorrido de prueba
+
+    document.getElementById('btnCapturar').addEventListener('click', () => {
+      if (!navigator.geolocation) {
+        document.getElementById('resultado').innerText = 'Tu navegador no soporta geolocalización.';
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        async (posicion) => {
+          const lat = posicion.coords.latitude;
+          const lng = posicion.coords.longitude;
+
+          document.getElementById('resultado').innerText = `Lat: ${lat}, Lng: ${lng} - Enviando...`;
+
+          try {
+            const respuesta = await fetch('http://localhost:4000/gps', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ lat, lng, recorrido_id: RECORRIDO_ID })
+            });
+            const datos = await respuesta.json();
+            document.getElementById('resultado').innerText = `Guardado correctamente: ${JSON.stringify(datos)}`;
+          } catch (error) {
+            document.getElementById('resultado').innerText = `Error al enviar: ${error.message}`;
+          }
+        },
+        (error) => {
+          document.getElementById('resultado').innerText = `Error de geolocalización: ${error.message}`;
+        }
+      );
+    });
+  </script>
+</body>
+</html>

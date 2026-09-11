@@ -53,18 +53,50 @@ app.post('/incidentes', async (req, res) => {
 });
 
 // Recibe una lectura de sensor (velocidad, aceleracion) desde el simulador
+const UMBRAL_FRENADA_BRUSCA = -3; // según lo definido por Julian con el Product Owner
+
 app.post('/lecturas', async (req, res) => {
   try {
-    const { velocidad, aceleracion } = req.body;
+    const { velocidad, aceleracion, recorrido_id } = req.body;
 
     const nuevaLectura = await prisma.lecturas_sensor.create({
       data: {
         velocidad: velocidad,
         aceleracion: aceleracion,
+        recorrido_id: recorrido_id || null,
       },
     });
 
     console.log('Lectura guardada:', nuevaLectura);
+
+    // Deteccion automatica de frenada brusca -> crea un incidente (US-07)
+      if (aceleracion <= UMBRAL_FRENADA_BRUSCA) {
+        const nivelRiesgo = aceleracion <= -5 ? 'alto' : 'medio';
+        const tipo = 'frenada_brusca';
+        const fecha = new Date();
+
+        // Validacion de campos obligatorios segun regla de negocio de US-07
+        const camposObligatorios = { tipo, recorrido_id, nivelRiesgo, fecha };
+        const camposFaltantes = Object.entries(camposObligatorios)
+          .filter(([_, valor]) => valor === null || valor === undefined || valor === '')
+          .map(([nombre]) => nombre);
+
+        if (camposFaltantes.length > 0) {
+          console.error(`🚨 ALERTA: Incidente rechazado por campos incompletos: ${camposFaltantes.join(', ')}`);
+        } else {
+          const nuevoIncidente = await prisma.incidentes.create({
+            data: {
+              recorrido_id: recorrido_id,
+              tipo: tipo,
+              nivel_riesgo: nivelRiesgo,
+              fecha: fecha,
+            },
+          });
+
+          console.log('⚠️  Incidente detectado y guardado:', nuevoIncidente);
+        }
+      }
+
     res.status(201).json(nuevaLectura);
   } catch (error) {
     console.error(error);
@@ -115,6 +147,24 @@ app.get('/recorridos/:id/nivel-seguridad', async (req, res) => {
       nivel_seguridad: nivelSeguridad
     });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Recibe coordenadas GPS y las guarda como punto geografico (PostGIS)
+app.post('/gps', async (req, res) => {
+  try {
+    const { lat, lng, recorrido_id } = req.body;
+
+    await prisma.$executeRaw`
+      INSERT INTO lecturas_sensor (recorrido_id, ubicacion)
+      VALUES (${recorrido_id}::uuid, ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326))
+    `;
+
+    console.log(`GPS guardado: lat=${lat}, lng=${lng}`);
+    res.status(201).json({ mensaje: 'Ubicacion guardada correctamente' });
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ error: error.message });
   }
 });
