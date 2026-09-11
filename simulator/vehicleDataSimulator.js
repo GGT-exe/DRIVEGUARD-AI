@@ -35,8 +35,12 @@ function detectarObstaculo(distancia) {
     return distancia < UMBRAL_RIESGO;
 }
 
+// IMPORTANTE: reemplaza esto por el ID real del recorrido creado en la base de datos
+const RECORRIDO_ID = "d982b26e-5a7f-4238-9b4e-2d0ec08e2257";
+
 setInterval(async () => {
     const dato = generarDatoVehiculo();
+    dato.recorrido_id = RECORRIDO_ID;
     console.log('Generado:', dato);
 
     try {
