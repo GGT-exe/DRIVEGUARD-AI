@@ -23,6 +23,16 @@ app.get('/conductores', async (req, res) => {
   }
 });
 
+// Endpoint para listar los recorridos existentes
+app.get('/recorridos', async (req, res) => {
+  try {
+    const recorridos = await prisma.recorridos.findMany();
+    res.json(recorridos);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Endpoint para crear un incidente con la imagen capturada
 app.post('/incidentes', async (req, res) => {
   try {
@@ -58,6 +68,53 @@ app.post('/lecturas', async (req, res) => {
     res.status(201).json(nuevaLectura);
   } catch (error) {
     console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint: calcular nivel de seguridad de un recorrido (US-09)
+app.get('/recorridos/:id/nivel-seguridad', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const lecturas = await prisma.lecturas_sensor.findMany({
+      where: { recorrido_id: id }
+    });
+
+    if (lecturas.length === 0) {
+      return res.json({
+        recorrido_id: id,
+        nivel_seguridad: null,
+        mensaje: 'No hay lecturas de sensor para este recorrido'
+      });
+    }
+
+    const LIMITE_VELOCIDAD = 80; // km/h, ajustable
+    const LIMITE_FRENADA_BRUSCA = -4; // aceleración negativa fuerte
+
+    let excesosVelocidad = 0;
+    let frenadasBruscas = 0;
+
+    lecturas.forEach(lectura => {
+      if (lectura.velocidad !== null && lectura.velocidad > LIMITE_VELOCIDAD) {
+        excesosVelocidad++;
+      }
+      if (lectura.aceleracion !== null && lectura.aceleracion < LIMITE_FRENADA_BRUSCA) {
+        frenadasBruscas++;
+      }
+    });
+
+    let nivelSeguridad = 100 - (excesosVelocidad * 5) - (frenadasBruscas * 10);
+    if (nivelSeguridad < 0) nivelSeguridad = 0;
+
+    res.json({
+      recorrido_id: id,
+      total_lecturas: lecturas.length,
+      excesos_velocidad: excesosVelocidad,
+      frenadas_bruscas: frenadasBruscas,
+      nivel_seguridad: nivelSeguridad
+    });
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
