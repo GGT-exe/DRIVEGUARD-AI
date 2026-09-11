@@ -60,19 +60,32 @@ app.post('/lecturas', async (req, res) => {
     console.log('Lectura guardada:', nuevaLectura);
 
     // Deteccion automatica de frenada brusca -> crea un incidente (US-07)
-    if (aceleracion <= UMBRAL_FRENADA_BRUSCA) {
-      const nivelRiesgo = aceleracion <= -5 ? 'alto' : 'medio';
+      if (aceleracion <= UMBRAL_FRENADA_BRUSCA) {
+        const nivelRiesgo = aceleracion <= -5 ? 'alto' : 'medio';
+        const tipo = 'frenada_brusca';
+        const fecha = new Date();
 
-      const nuevoIncidente = await prisma.incidentes.create({
-        data: {
-          recorrido_id: recorrido_id || null,
-          tipo: 'frenada_brusca',
-          nivel_riesgo: nivelRiesgo,
-        },
-      });
+        // Validacion de campos obligatorios segun regla de negocio de US-07
+        const camposObligatorios = { tipo, recorrido_id, nivelRiesgo, fecha };
+        const camposFaltantes = Object.entries(camposObligatorios)
+          .filter(([_, valor]) => valor === null || valor === undefined || valor === '')
+          .map(([nombre]) => nombre);
 
-      console.log('⚠️  Incidente detectado y guardado:', nuevoIncidente);
-    }
+        if (camposFaltantes.length > 0) {
+          console.error(`🚨 ALERTA: Incidente rechazado por campos incompletos: ${camposFaltantes.join(', ')}`);
+        } else {
+          const nuevoIncidente = await prisma.incidentes.create({
+            data: {
+              recorrido_id: recorrido_id,
+              tipo: tipo,
+              nivel_riesgo: nivelRiesgo,
+              fecha: fecha,
+            },
+          });
+
+          console.log('⚠️  Incidente detectado y guardado:', nuevoIncidente);
+        }
+      }
 
     res.status(201).json(nuevaLectura);
   } catch (error) {
