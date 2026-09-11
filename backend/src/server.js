@@ -104,12 +104,16 @@ app.post('/lecturas', async (req, res) => {
   }
 });
 
-// Endpoint: calcular nivel de seguridad de un recorrido (US-09)
+// Endpoint: calcular nivel de seguridad y detectar comportamiento anormal (US-09 y US-10)
 app.get('/recorridos/:id/nivel-seguridad', async (req, res) => {
   try {
     const { id } = req.params;
 
     const lecturas = await prisma.lecturas_sensor.findMany({
+      where: { recorrido_id: id }
+    });
+
+    const incidentes = await prisma.incidentes.findMany({
       where: { recorrido_id: id }
     });
 
@@ -139,12 +143,31 @@ app.get('/recorridos/:id/nivel-seguridad', async (req, res) => {
     let nivelSeguridad = 100 - (excesosVelocidad * 5) - (frenadasBruscas * 10);
     if (nivelSeguridad < 0) nivelSeguridad = 0;
 
+    // Detección de comportamiento anormal (US-10)
+    const UMBRAL_NIVEL_BAJO = 50;
+    const UMBRAL_INCIDENTES = 3;
+
+    const comportamientoAnormal =
+      nivelSeguridad < UMBRAL_NIVEL_BAJO || incidentes.length >= UMBRAL_INCIDENTES;
+
+    let clasificacion;
+    if (comportamientoAnormal) {
+      clasificacion = 'anormal';
+    } else if (incidentes.length > 0) {
+      clasificacion = 'riesgo_aislado';
+    } else {
+      clasificacion = 'normal';
+    }
+
     res.json({
       recorrido_id: id,
       total_lecturas: lecturas.length,
       excesos_velocidad: excesosVelocidad,
       frenadas_bruscas: frenadasBruscas,
-      nivel_seguridad: nivelSeguridad
+      nivel_seguridad: nivelSeguridad,
+      total_incidentes: incidentes.length,
+      comportamiento_anormal: comportamientoAnormal,
+      clasificacion: clasificacion
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
