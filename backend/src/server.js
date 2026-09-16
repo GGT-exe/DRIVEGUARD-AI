@@ -1,16 +1,27 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const http = require('http'); // NUEVO
 const { PrismaClient } = require('@prisma/client');
 const PDFDocument = require('pdfkit');   // HU-20: exportar reportes en PDF
 const ExcelJS = require('exceljs');      // HU-20: exportar reportes en Excel
-
+const { initSockets, emitirAlerta, SEVERIDAD } = require('./sockets'); // NUEVO
 const app = express();
+const server = http.createServer(app); // NUEVO — reemplaza el uso directo de app.listen()
 const prisma = new PrismaClient();
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
+initSockets(server); // NUEVO — deja el canal de Socket.io activo sobre el mismo servidor
+app.post('/test-alerta/:conductorId', (req, res) => {
+  emitirAlerta(req.params.conductorId, {
+    severidad: SEVERIDAD.GRAVE,
+    tipo: 'frenada_brusca',
+    mensaje: 'Alerta de prueba',
+  });
+  res.sendStatus(200);
+});
 app.get('/', (req, res) => {
   res.send('DriveGuard API activa');
 });
@@ -59,7 +70,7 @@ const UMBRAL_FRENADA_BRUSCA = -3; // según lo definido por Julian con el Produc
 
 app.post('/lecturas', async (req, res) => {
   try {
-    const { velocidad, aceleracion, recorrido_id } = req.body;
+    const { velocidad, aceleracion, recorrido_id, conductor_id } = req.body; // NUEVO: conductor_id, necesario para saber a quién avisar
 
     const nuevaLectura = await prisma.lecturas_sensor.create({
       data: {
@@ -96,6 +107,17 @@ app.post('/lecturas', async (req, res) => {
           });
 
           console.log('⚠️  Incidente detectado y guardado:', nuevoIncidente);
+
+          // NUEVO (Historia 11) — avisar al conductor en tiempo real por Socket.io.
+          // Hoy es solo para probar el canal; el mapeo nivel_riesgo -> severidad
+          // se termina de afinar el miércoles.
+          if (conductor_id) {
+            emitirAlerta(conductor_id, {
+              tipo: tipo,
+              severidad: nivelRiesgo === 'alto' ? SEVERIDAD.GRAVE : SEVERIDAD.MODERADA,
+              mensaje: 'Frenada brusca detectada',
+            });
+          }
         }
       }
 
@@ -676,6 +698,6 @@ app.get('/reportes/exportar', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
+server.listen(PORT, () => { // CAMBIADO: antes era app.listen(...)
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
 });
