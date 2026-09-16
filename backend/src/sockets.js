@@ -1,10 +1,11 @@
 // sockets.js
 // Historia 11 — Alerta inmediata al conductor ante situación de riesgo
+// Historia 12 — Notificación en tiempo real al supervisor de flota
 //
-// Este módulo configura el canal de tiempo real (Socket.io) que se usará
-// para enviar alertas al conductor apenas se detecta una situación de riesgo.
-// Hoy (lunes) el objetivo es dejar el canal funcionando y probado,
-// no todavía conectarlo con la detección real (eso llega con EPIC-03/US-11 avanzada).
+// Este módulo configura el canal de tiempo real (Socket.io): cuando se
+// detecta un evento de riesgo, avisa al conductor específico (room
+// conductor:<id>) y, al mismo tiempo, a todos los supervisores conectados
+// (room "supervisores").
 
 const { Server } = require("socket.io");
 
@@ -45,6 +46,13 @@ function initSockets(httpServer) {
       console.log(`[sockets] Conductor ${conductorId} unido a su canal`);
     });
 
+    // Historia 12 — el dashboard del supervisor se une a la room "supervisores"
+    // para recibir todas las alertas de la flota, sin importar el conductor.
+    socket.on("registrar_supervisor", () => {
+      socket.join("supervisores");
+      console.log(`[sockets] Supervisor conectado: ${socket.id}`);
+    });
+
     socket.on("disconnect", () => {
       console.log(`[sockets] Cliente desconectado: ${socket.id}`);
     });
@@ -55,9 +63,10 @@ function initSockets(httpServer) {
 }
 
 /**
- * Envía una alerta a un conductor específico.
- * Esta es la función que, en el resto del Sprint, va a llamar la lógica
- * de detección de riesgo (EPIC-03) cada vez que se detecte un evento.
+ * Envía una alerta a un conductor específico Y, al mismo tiempo, notifica
+ * a todos los supervisores conectados (Historia 11 + Historia 12).
+ * Esta es la función que llama la lógica de detección de riesgo cada vez
+ * que se detecta un evento.
  *
  * @param {string} conductorId
  * @param {{ severidad: string, mensaje: string, tipo?: string }} alerta
@@ -67,12 +76,18 @@ function emitirAlerta(conductorId, alerta) {
     throw new Error("Socket.io no ha sido inicializado. Llama a initSockets() primero.");
   }
 
-  io.to(`conductor:${conductorId}`).emit("alerta", {
+  const payload = {
     ...alerta,
     timestamp: new Date().toISOString(),
-  });
+  };
 
-  console.log(`[sockets] Alerta enviada a conductor ${conductorId}:`, alerta);
+  // Historia 11 — al conductor específico
+  io.to(`conductor:${conductorId}`).emit("alerta", payload);
+
+  // Historia 12 — a todos los supervisores de flota, incluyendo qué conductor la generó
+  io.to("supervisores").emit("alerta_flota", { conductorId, ...payload });
+
+  console.log(`[sockets] Alerta enviada a conductor ${conductorId} y a supervisores:`, alerta);
 }
 
 module.exports = { initSockets, emitirAlerta, SEVERIDAD };

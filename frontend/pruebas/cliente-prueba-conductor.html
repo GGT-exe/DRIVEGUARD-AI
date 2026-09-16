@@ -55,9 +55,10 @@
       // Aviso sonoro simple para validar el canal (el sonido real de Historia 11
       // se define más adelante en el sprint)
       try {
+        const FRECUENCIAS = { leve: 330, moderada: 550, grave: 880 };
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const osc = audioCtx.createOscillator();
-        osc.frequency.value = data.severidad === "grave" ? 880 : 440;
+        osc.frequency.value = FRECUENCIAS[data.severidad] || 440;
         osc.connect(audioCtx.destination);
         osc.start();
         osc.stop(audioCtx.currentTime + 0.3);

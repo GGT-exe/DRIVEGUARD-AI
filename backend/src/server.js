@@ -14,14 +14,22 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 initSockets(server); // NUEVO — deja el canal de Socket.io activo sobre el mismo servidor
+
+// Endpoint TEMPORAL de prueba (Historia 11 + Historia 12) — permite elegir
+// severidad para probar los 3 niveles y confirmar que también le llega
+// al supervisor. Body opcional: { "severidad": "leve" | "moderada" | "grave" }
 app.post('/test-alerta/:conductorId', (req, res) => {
+  const severidad = req.body?.severidad || SEVERIDAD.GRAVE;
+
   emitirAlerta(req.params.conductorId, {
-    severidad: SEVERIDAD.GRAVE,
+    severidad,
     tipo: 'frenada_brusca',
-    mensaje: 'Alerta de prueba',
+    mensaje: `Alerta de prueba (${severidad})`,
   });
+
   res.sendStatus(200);
 });
+
 app.get('/', (req, res) => {
   res.send('DriveGuard API activa');
 });
@@ -84,7 +92,15 @@ app.post('/lecturas', async (req, res) => {
 
     // Deteccion automatica de frenada brusca -> crea un incidente (US-07)
       if (aceleracion <= UMBRAL_FRENADA_BRUSCA) {
-        const nivelRiesgo = aceleracion <= -5 ? 'alto' : 'medio';
+        // Tres niveles de riesgo según qué tan fuerte fue la frenada (Historia 11)
+        let nivelRiesgo;
+        if (aceleracion <= -6) {
+          nivelRiesgo = 'alto';
+        } else if (aceleracion <= -4.5) {
+          nivelRiesgo = 'medio';
+        } else {
+          nivelRiesgo = 'bajo';
+        }
         const tipo = 'frenada_brusca';
         const fecha = new Date();
 
@@ -108,14 +124,24 @@ app.post('/lecturas', async (req, res) => {
 
           console.log('⚠️  Incidente detectado y guardado:', nuevoIncidente);
 
-          // NUEVO (Historia 11) — avisar al conductor en tiempo real por Socket.io.
-          // Hoy es solo para probar el canal; el mapeo nivel_riesgo -> severidad
-          // se termina de afinar el miércoles.
+          // Historia 11 — avisar al conductor en tiempo real por Socket.io,
+          // con los tres niveles de severidad ya completos.
+          const MAPA_SEVERIDAD = {
+            bajo: SEVERIDAD.LEVE,
+            medio: SEVERIDAD.MODERADA,
+            alto: SEVERIDAD.GRAVE,
+          };
+          const MAPA_MENSAJE = {
+            bajo: 'Frenada detectada, mantén precaución',
+            medio: 'Frenada brusca detectada',
+            alto: 'Frenada muy brusca — riesgo alto',
+          };
+
           if (conductor_id) {
             emitirAlerta(conductor_id, {
               tipo: tipo,
-              severidad: nivelRiesgo === 'alto' ? SEVERIDAD.GRAVE : SEVERIDAD.MODERADA,
-              mensaje: 'Frenada brusca detectada',
+              severidad: MAPA_SEVERIDAD[nivelRiesgo],
+              mensaje: MAPA_MENSAJE[nivelRiesgo],
             });
           }
         }
