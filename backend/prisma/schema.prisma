@@ -8,26 +8,30 @@ datasource db {
 }
 
 model alertas_enviadas {
-  id                  String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  incidente_id        String?      @db.Uuid
-  conductor_id        String?      @db.Uuid
-  contacto_emergencia String?      @db.VarChar(150)
-  tipo_alerta         String?      @db.VarChar(50)
-  fecha_envio         DateTime?    @default(now()) @db.Timestamp(6)
-  estado              String?      @default("enviada") @db.VarChar(20)
-  conductores         conductores? @relation(fields: [conductor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  incidentes          incidentes?  @relation(fields: [incidente_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                     String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  incidente_id           String?               @db.Uuid
+  conductor_id           String?               @db.Uuid
+  contacto_emergencia    String?               @db.VarChar(150)
+  tipo_alerta            String?               @db.VarChar(50)
+  fecha_envio            DateTime?             @default(now()) @db.Timestamp(6)
+  estado                 String?               @default("enviada") @db.VarChar(20)
+  contacto_emergencia_id String?               @db.Uuid
+  conductores            conductores?          @relation(fields: [conductor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  contactos_emergencia   contactos_emergencia? @relation(fields: [contacto_emergencia_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  incidentes             incidentes?           @relation(fields: [incidente_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
 model conductores {
-  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  nombre             String               @db.VarChar(100)
-  correo             String               @unique @db.VarChar(150)
-  contrasena_hash    String
-  fecha_registro     DateTime?            @default(now()) @db.Timestamp(6)
-  alertas_enviadas   alertas_enviadas[]
-  recorridos         recorridos[]
-  reportes_seguridad reportes_seguridad[]
+  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre               String                 @db.VarChar(100)
+  correo               String                 @unique @db.VarChar(150)
+  contrasena_hash      String
+  fecha_registro       DateTime?              @default(now()) @db.Timestamp(6)
+  alertas_enviadas     alertas_enviadas[]
+  contactos_emergencia contactos_emergencia[]
+  recorridos           recorridos[]
+  reportes_seguridad   reportes_seguridad[]
+  vehiculos            vehiculos[]
 }
 
 model incidentes {
@@ -39,6 +43,9 @@ model incidentes {
   fecha            DateTime?          @default(now()) @db.Timestamp(6)
   alertas_enviadas alertas_enviadas[]
   recorridos       recorridos?        @relation(fields: [recorrido_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([fecha], map: "idx_incidentes_fecha")
+  @@index([recorrido_id], map: "idx_incidentes_recorrido")
 }
 
 model lecturas_sensor {
@@ -49,6 +56,8 @@ model lecturas_sensor {
   ubicacion    Unsupported("geometry")?
   timestamp    DateTime?                @default(now()) @db.Timestamp(6)
   recorridos   recorridos?              @relation(fields: [recorrido_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([ubicacion], map: "idx_lecturas_ubicacion", type: Gist)
 }
 
 model recorridos {
@@ -57,9 +66,14 @@ model recorridos {
   fecha_inicio    DateTime?                @default(now()) @db.Timestamp(6)
   fecha_fin       DateTime?                @db.Timestamp(6)
   ruta            Unsupported("geometry")?
+  vehiculo_id     String?                  @db.Uuid
   incidentes      incidentes[]
   lecturas_sensor lecturas_sensor[]
   conductores     conductores?             @relation(fields: [conductor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vehiculos       vehiculos?               @relation(fields: [vehiculo_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([conductor_id], map: "idx_recorridos_conductor")
+  @@index([vehiculo_id], map: "idx_recorridos_vehiculo")
 }
 
 model reportes_seguridad {
@@ -80,4 +94,43 @@ model spatial_ref_sys {
   auth_srid Int?
   srtext    String? @db.VarChar(2048)
   proj4text String? @db.VarChar(2048)
+}
+
+model contactos_emergencia {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conductor_id     String?            @db.Uuid
+  nombre           String             @db.VarChar(100)
+  telefono         String?            @db.VarChar(20)
+  correo           String?            @db.VarChar(150)
+  parentesco       String?            @db.VarChar(50)
+  fecha_registro   DateTime?          @default(now()) @db.Timestamp(6)
+  alertas_enviadas alertas_enviadas[]
+  conductores      conductores?       @relation(fields: [conductor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([conductor_id], map: "idx_contactos_conductor")
+}
+
+model tramos_riesgo {
+  id               String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tramo            Unsupported("geometry")
+  nivel_riesgo     String?                 @db.VarChar(20)
+  total_incidentes Int?                    @default(0)
+  descripcion      String?
+  fecha_calculo    DateTime?               @default(now()) @db.Timestamp(6)
+
+  @@index([tramo], map: "idx_tramos_riesgo_geom", type: Gist)
+}
+
+model vehiculos {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conductor_id   String?      @db.Uuid
+  tipo           String       @db.VarChar(30)
+  placa          String       @unique @db.VarChar(20)
+  marca          String?      @db.VarChar(50)
+  modelo         String?      @db.VarChar(50)
+  fecha_registro DateTime?    @default(now()) @db.Timestamp(6)
+  recorridos     recorridos[]
+  conductores    conductores? @relation(fields: [conductor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([conductor_id], map: "idx_vehiculos_conductor")
 }
