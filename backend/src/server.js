@@ -192,6 +192,29 @@ app.post('/gps', async (req, res) => {
   }
 });
 
+// Endpoint: obtener las coordenadas GPS de un recorrido (para el mapa - Historia 14)
+app.get('/recorridos/:id/gps', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const puntos = await prisma.$queryRaw`
+      SELECT
+        ST_Y(ubicacion::geometry) AS lat,
+        ST_X(ubicacion::geometry) AS lng,
+        timestamp
+      FROM lecturas_sensor
+      WHERE recorrido_id = ${id}::uuid
+        AND ubicacion IS NOT NULL
+      ORDER BY timestamp ASC
+    `;
+
+    res.json(puntos);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // HU-13: Historial de incidentes con filtros (conductor, vehiculo, fechas)
 app.get('/incidentes/historial', async (req, res) => {
   try {
@@ -262,17 +285,6 @@ app.get('/reportes/nivel-seguridad/:conductor_id', async (req, res) => {
 });
 
 // Endpoints auxiliares para los dropdowns del filtro visual
-app.get('/conductores', async (req, res) => {
-  try {
-    const conductores = await prisma.conductores.findMany({
-      select: { id: true, nombre: true },
-    });
-    res.json(conductores);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 app.get('/vehiculos/tipos', async (req, res) => {
   try {
     const tipos = await prisma.vehiculos.findMany({
