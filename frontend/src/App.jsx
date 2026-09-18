@@ -3,6 +3,7 @@ import heroImg from './assets/hero.png'
 import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
 import Camara from './Camara'
+import Mapa from './Mapa'
 import './App.css'
 
 function App() {
@@ -11,6 +12,7 @@ function App() {
   return (
     <>
       <Camara />
+      <Mapa />
       <section id="center">
         <div className="hero">
           <img src={heroImg} className="base" width="170" height="179" alt="" />
