@@ -192,6 +192,99 @@ app.post('/gps', async (req, res) => {
   }
 });
 
+// HU-13: Historial de incidentes con filtros (conductor, vehiculo, fechas)
+app.get('/incidentes/historial', async (req, res) => {
+  try {
+    const { conductor_id, fecha_inicio, fecha_fin, tipo_vehiculo, placa } = req.query;
+    const condiciones = [];
+    const valores = [];
+    let idx = 1;
+
+    let query = `
+      SELECT i.id, c.nombre AS conductor, v.tipo AS tipo_vehiculo, v.placa,
+             i.tipo, i.nivel_riesgo, i.fecha
+      FROM incidentes i
+      JOIN recorridos r ON i.recorrido_id = r.id
+      JOIN conductores c ON r.conductor_id = c.id
+      LEFT JOIN vehiculos v ON r.vehiculo_id = v.id
+    `;
+
+    if (conductor_id) { condiciones.push(`c.id = $${idx++}`); valores.push(conductor_id); }
+    if (fecha_inicio) { condiciones.push(`i.fecha >= $${idx++}`); valores.push(fecha_inicio); }
+    if (fecha_fin) { condiciones.push(`i.fecha <= $${idx++}`); valores.push(fecha_fin); }
+    if (tipo_vehiculo) { condiciones.push(`v.tipo = $${idx++}`); valores.push(tipo_vehiculo); }
+    if (placa) { condiciones.push(`v.placa = $${idx++}`); valores.push(placa); }
+
+    if (condiciones.length > 0) {
+      query += ' WHERE ' + condiciones.join(' AND ');
+    }
+    query += ' ORDER BY i.fecha DESC';
+
+    const resultado = await prisma.$queryRawUnsafe(query, ...valores);
+    res.json(resultado);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// HU-15: Nivel de seguridad promedio de un conductor
+app.get('/reportes/nivel-seguridad/:conductor_id', async (req, res) => {
+  try {
+    const { conductor_id } = req.params;
+
+    const resultado = await prisma.$queryRaw`
+      SELECT
+          c.nombre AS conductor,
+          GREATEST(
+              100
+              - (COUNT(*) FILTER (WHERE i.nivel_riesgo = 'alto') * 10)
+              - (COUNT(*) FILTER (WHERE i.nivel_riesgo = 'medio') * 5),
+              0
+          ) AS nivel_seguridad_promedio,
+          COUNT(*) AS total_incidentes
+      FROM conductores c
+      LEFT JOIN recorridos r ON r.conductor_id = c.id
+      LEFT JOIN incidentes i ON i.recorrido_id = r.id
+      WHERE c.id = ${conductor_id}::uuid
+      GROUP BY c.nombre
+    `;
+
+    if (resultado.length === 0) {
+      return res.status(404).json({ mensaje: 'No hay historial suficiente para este conductor.' });
+    }
+
+    res.json(resultado[0]);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoints auxiliares para los dropdowns del filtro visual
+app.get('/conductores', async (req, res) => {
+  try {
+    const conductores = await prisma.conductores.findMany({
+      select: { id: true, nombre: true },
+    });
+    res.json(conductores);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/vehiculos/tipos', async (req, res) => {
+  try {
+    const tipos = await prisma.vehiculos.findMany({
+      distinct: ['tipo'],
+      select: { tipo: true },
+    });
+    res.json(tipos.map(t => t.tipo));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);

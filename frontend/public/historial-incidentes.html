@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Historial de Incidentes - DriveGuard AI</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; }
+    .filtros { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+    .filtros select, .filtros input, .filtros button { padding: 0.5rem; }
+    table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+    th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: left; }
+    th { background: #f0f0f0; }
+    .riesgo-alto { color: #b00020; font-weight: bold; }
+    .riesgo-medio { color: #c77700; }
+    #panelSeguridad { margin-top: 1.5rem; padding: 1rem; background: #f7f7f7; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Historial de Incidentes</h1>
+
+  <div class="filtros">
+    <select id="filtroConductor">
+      <option value="">Todos los conductores</option>
+    </select>
+    <select id="filtroTipoVehiculo">
+      <option value="">Todos los vehículos</option>
+    </select>
+    <label>Desde: <input type="date" id="fechaInicio"></label>
+    <label>Hasta: <input type="date" id="fechaFin"></label>
+    <button id="btnFiltrar">Filtrar</button>
+  </div>
+
+  <table id="tablaIncidentes">
+    <thead>
+      <tr><th>Conductor</th><th>Vehículo</th><th>Placa</th><th>Tipo</th><th>Nivel de riesgo</th><th>Fecha</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <div id="panelSeguridad" style="display: none;">
+    <h3>Nivel de seguridad</h3>
+    <p id="textoSeguridad"></p>
+  </div>
+
+  <script>
+    const API_URL = 'http://localhost:4000';
+
+    async function cargarConductores() {
+      const res = await fetch(`${API_URL}/conductores`);
+      const conductores = await res.json();
+      const select = document.getElementById('filtroConductor');
+      conductores.forEach(c => {
+        const opcion = document.createElement('option');
+        opcion.value = c.id;
+        opcion.textContent = c.nombre;
+        select.appendChild(opcion);
+      });
+    }
+
+    async function cargarTiposVehiculo() {
+      const res = await fetch(`${API_URL}/vehiculos/tipos`);
+      const tipos = await res.json();
+      const select = document.getElementById('filtroTipoVehiculo');
+      tipos.forEach(t => {
+        const opcion = document.createElement('option');
+        opcion.value = t;
+        opcion.textContent = t.charAt(0).toUpperCase() + t.slice(1);
+        select.appendChild(opcion);
+      });
+    }
+
+    async function cargarHistorial() {
+      const conductorId = document.getElementById('filtroConductor').value;
+      const tipoVehiculo = document.getElementById('filtroTipoVehiculo').value;
+      const fechaInicio = document.getElementById('fechaInicio').value;
+      const fechaFin = document.getElementById('fechaFin').value;
+
+      const params = new URLSearchParams();
+      if (conductorId) params.append('conductor_id', conductorId);
+      if (tipoVehiculo) params.append('tipo_vehiculo', tipoVehiculo);
+      if (fechaInicio) params.append('fecha_inicio', fechaInicio);
+      if (fechaFin) params.append('fecha_fin', fechaFin);
+
+      const res = await fetch(`${API_URL}/incidentes/historial?${params.toString()}`);
+      const incidentes = await res.json();
+
+      const tbody = document.querySelector('#tablaIncidentes tbody');
+      tbody.innerHTML = '';
+      incidentes.forEach(i => {
+        const claseRiesgo = i.nivel_riesgo === 'alto' ? 'riesgo-alto' : i.nivel_riesgo === 'medio' ? 'riesgo-medio' : '';
+        const fila = document.createElement('tr');
+        fila.innerHTML = `
+          <td>${i.conductor}</td>
+          <td>${i.tipo_vehiculo || '-'}</td>
+          <td>${i.placa || '-'}</td>
+          <td>${i.tipo}</td>
+          <td class="${claseRiesgo}">${i.nivel_riesgo}</td>
+          <td>${new Date(i.fecha).toLocaleString()}</td>
+        `;
+        tbody.appendChild(fila);
+      });
+
+      if (conductorId) {
+        const resSeg = await fetch(`${API_URL}/reportes/nivel-seguridad/${conductorId}`);
+        const panel = document.getElementById('panelSeguridad');
+        if (resSeg.ok) {
+          const datos = await resSeg.json();
+          document.getElementById('textoSeguridad').innerText =
+            `${datos.conductor}: nivel de seguridad ${datos.nivel_seguridad_promedio}/100 (${datos.total_incidentes} incidentes registrados)`;
+          panel.style.display = 'block';
+        } else {
+          document.getElementById('textoSeguridad').innerText = 'No hay historial suficiente para este conductor.';
+          panel.style.display = 'block';
+        }
+      } else {
+        document.getElementById('panelSeguridad').style.display = 'none';
+      }
+    }
+
+    document.getElementById('btnFiltrar').addEventListener('click', cargarHistorial);
+
+    cargarConductores();
+    cargarTiposVehiculo();
+    cargarHistorial();
+  </script>
+</body>
+</html>
