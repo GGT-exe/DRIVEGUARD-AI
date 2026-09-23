@@ -8,6 +8,7 @@
 // (room "supervisores").
 
 const { Server } = require("socket.io");
+const { randomUUID } = require("crypto"); // NUEVO — para dar un id único a cada alerta
 
 let io;
 
@@ -78,6 +79,7 @@ function emitirAlerta(conductorId, alerta) {
 
   const payload = {
     ...alerta,
+    alertaId: randomUUID(), // NUEVO — permite detectar duplicados en pruebas de carga
     timestamp: new Date().toISOString(),
   };
 
