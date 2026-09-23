@@ -87,6 +87,21 @@ model reportes_seguridad {
   conductores              conductores? @relation(fields: [conductor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
+// Historia 18 — Inicio de sesión seguro al dashboard
+// Historia 19 — Gestión de usuarios y permisos de acceso
+//
+// Tabla NUEVA y separada de "conductores": esta es para quien entra al
+// dashboard (gerente, supervisor, administrador), no para el conductor.
+model usuarios {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre          String    @db.VarChar(100)
+  correo          String    @unique @db.VarChar(150)
+  contrasena_hash String
+  rol             String    @default("supervisor") @db.VarChar(20) // "gerente" | "supervisor" | "administrador"
+  activo          Boolean   @default(true)
+  fecha_registro  DateTime? @default(now()) @db.Timestamp(6)
+}
+
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model spatial_ref_sys {
   srid      Int     @id
