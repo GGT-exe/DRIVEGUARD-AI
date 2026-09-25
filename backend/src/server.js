@@ -212,7 +212,12 @@ app.get('/recorridos/:id/gps', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message });
-  }
+      }
+});
+
+// Ruta de prueba simple, para diagnosticar por qué otras rutas nuevas no cargan
+app.get('/prueba-simple', (req, res) => {
+  res.json({ funciona: true });
 });
 
 // HU-13: Historial de incidentes con filtros (conductor, vehiculo, fechas)
@@ -296,7 +301,28 @@ app.get('/vehiculos/tipos', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
+app.get('/recorridos/:id/incidentes-mapa', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const incidentes = await prisma.$queryRaw`
+      SELECT
+        i.id,
+        i.tipo,
+        i.nivel_riesgo,
+        i.fecha,
+        (SELECT ST_Y(ls.ubicacion::geometry) FROM lecturas_sensor ls WHERE ls.recorrido_id = i.recorrido_id AND ls.ubicacion IS NOT NULL ORDER BY ABS(EXTRACT(EPOCH FROM (ls.timestamp - i.fecha))) LIMIT 1) AS lat,
+        (SELECT ST_X(ls.ubicacion::geometry) FROM lecturas_sensor ls WHERE ls.recorrido_id = i.recorrido_id AND ls.ubicacion IS NOT NULL ORDER BY ABS(EXTRACT(EPOCH FROM (ls.timestamp - i.fecha))) LIMIT 1) AS lng
+      FROM incidentes i
+      WHERE i.recorrido_id = ${id}::uuid
+      ORDER BY i.fecha ASC
+    `;
+    res.json(incidentes);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+app.get('/prueba-simple', (req, res) => { res.json({ funciona: true }); });
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
