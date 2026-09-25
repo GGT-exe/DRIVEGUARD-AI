@@ -323,6 +323,139 @@ app.get('/recorridos/:id/incidentes-mapa', async (req, res) => {
   }
 });
 app.get('/prueba-simple', (req, res) => { res.json({ funciona: true }); });
+
+// ============================================================
+// HU-16: Comparación del nivel de seguridad entre conductores o vehículos
+// Usa la MISMA fórmula que US-09 (/recorridos/:id/nivel-seguridad)
+// ============================================================
+function calcularNivelSeguridad(lecturas) {
+  if (lecturas.length === 0) return null;
+
+  const LIMITE_VELOCIDAD = 80;       // km/h (igual que US-09)
+  const LIMITE_FRENADA_BRUSCA = -4;  // igual que US-09
+
+  let excesosVelocidad = 0;
+  let frenadasBruscas = 0;
+
+  lecturas.forEach(lectura => {
+    if (lectura.velocidad !== null && lectura.velocidad > LIMITE_VELOCIDAD) {
+      excesosVelocidad++;
+    }
+    if (lectura.aceleracion !== null && lectura.aceleracion < LIMITE_FRENADA_BRUSCA) {
+      frenadasBruscas++;
+    }
+  });
+
+  let nivel = 100 - (excesosVelocidad * 5) - (frenadasBruscas * 10);
+  if (nivel < 0) nivel = 0;
+
+  return { nivel, excesosVelocidad, frenadasBruscas };
+}
+
+app.get('/comparacion/nivel-seguridad', async (req, res) => {
+  try {
+    const por = req.query.por || 'conductor';
+
+    if (por !== 'conductor' && por !== 'vehiculo') {
+      return res.status(400).json({
+        error: "El parámetro 'por' debe ser 'conductor' o 'vehiculo'"
+      });
+    }
+
+    // Traer todos los recorridos con lo necesario para el cálculo
+    const recorridos = await prisma.recorridos.findMany({
+      select: {
+        id: true,
+        conductor_id: true,
+        vehiculo_id: true,
+        conductores: { select: { nombre: true } },
+        vehiculos: { select: { placa: true, tipo: true, marca: true, modelo: true } },
+        lecturas_sensor: { select: { velocidad: true, aceleracion: true } },
+        _count: { select: { incidentes: true } }
+      }
+    });
+
+    const UMBRAL_NIVEL_BAJO = 50;  // igual que US-10
+    const UMBRAL_INCIDENTES = 3;   // igual que US-10
+
+    // Agrupar recorridos por conductor o por vehículo
+    const grupos = {};
+
+    recorridos.forEach(recorrido => {
+      const clave = por === 'conductor' ? recorrido.conductor_id : recorrido.vehiculo_id;
+      if (!clave) return; // recorrido sin conductor/vehículo asignado: se omite
+
+      if (!grupos[clave]) {
+        grupos[clave] = {
+          id: clave,
+          nombre: por === 'conductor'
+            ? (recorrido.conductores?.nombre || 'Sin nombre')
+            : (recorrido.vehiculos?.placa || 'Sin placa'),
+          detalle: por === 'vehiculo' && recorrido.vehiculos
+            ? {
+                tipo: recorrido.vehiculos.tipo,
+                marca: recorrido.vehiculos.marca,
+                modelo: recorrido.vehiculos.modelo
+              }
+            : undefined,
+          total_recorridos: 0,
+          recorridos_evaluados: 0,
+          suma_niveles: 0,
+          excesos_velocidad: 0,
+          frenadas_bruscas: 0,
+          total_incidentes: 0,
+          recorridos_anormales: 0
+        };
+      }
+
+      const grupo = grupos[clave];
+      const totalIncidentes = recorrido._count.incidentes;
+
+      grupo.total_recorridos++;
+      grupo.total_incidentes += totalIncidentes;
+
+      const resultado = calcularNivelSeguridad(recorrido.lecturas_sensor);
+      if (resultado === null) return; // sin lecturas: no entra al promedio
+
+      grupo.recorridos_evaluados++;
+      grupo.suma_niveles += resultado.nivel;
+      grupo.excesos_velocidad += resultado.excesosVelocidad;
+      grupo.frenadas_bruscas += resultado.frenadasBruscas;
+
+      if (resultado.nivel < UMBRAL_NIVEL_BAJO || totalIncidentes >= UMBRAL_INCIDENTES) {
+        grupo.recorridos_anormales++;
+      }
+    });
+
+    // Calcular promedio y ordenar de más seguro a menos seguro
+    const resultados = Object.values(grupos)
+      .map(grupo => {
+        const { suma_niveles, ...resto } = grupo;
+        return {
+          ...resto,
+          nivel_seguridad_promedio: grupo.recorridos_evaluados > 0
+            ? Math.round((suma_niveles / grupo.recorridos_evaluados) * 10) / 10
+            : null
+        };
+      })
+      .sort((a, b) => {
+        if (a.nivel_seguridad_promedio === null) return 1;
+        if (b.nivel_seguridad_promedio === null) return -1;
+        return b.nivel_seguridad_promedio - a.nivel_seguridad_promedio;
+      })
+      .map((item, index) => ({ posicion: index + 1, ...item }));
+
+    res.json({
+      comparacion_por: por,
+      total: resultados.length,
+      resultados
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
