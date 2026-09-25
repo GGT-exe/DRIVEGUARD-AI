@@ -4,6 +4,7 @@ import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
 import Camara from './Camara'
 import Mapa from './Mapa'
+import ComparacionSeguridad from './ComparacionSeguridad'
 import './App.css'
 
 function App() {
@@ -13,6 +14,7 @@ function App() {
     <>
       <Camara />
       <Mapa />
+      <ComparacionSeguridad />
       <section id="center">
         <div className="hero">
           <img src={heroImg} className="base" width="170" height="179" alt="" />
