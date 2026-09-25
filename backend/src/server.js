@@ -2,6 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { PrismaClient } = require('@prisma/client');
+const PDFDocument = require('pdfkit');   // HU-20: exportar reportes en PDF
+const ExcelJS = require('exceljs');      // HU-20: exportar reportes en Excel
 
 const app = express();
 const prisma = new PrismaClient();
@@ -491,6 +493,185 @@ app.get('/comparacion/nivel-seguridad', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// HU-20: Exportación de reportes de seguridad en PDF o Excel
+// Lee la tabla reportes_seguridad (la que llena el job de la Historia 17)
+// Uso: /reportes/exportar?formato=pdf|excel  (opcionales: &conductor_id=...&fecha_inicio=AAAA-MM-DD&fecha_fin=AAAA-MM-DD)
+// ============================================================
+function formatearFecha(fecha) {
+  if (!fecha) return '-';
+  return new Date(fecha).toISOString().slice(0, 10);
+}
+
+function formatearNivel(nivel) {
+  if (nivel === null || nivel === undefined) return '-';
+  return Math.round(nivel * 10) / 10;
+}
+
+app.get('/reportes/exportar', async (req, res) => {
+  try {
+    const formato = (req.query.formato || '').toLowerCase();
+    const { conductor_id, fecha_inicio, fecha_fin } = req.query;
+
+    if (formato !== 'pdf' && formato !== 'excel') {
+      return res.status(400).json({ error: "El parámetro 'formato' debe ser 'pdf' o 'excel'" });
+    }
+
+    // Construir filtros
+    const where = {};
+    if (conductor_id) where.conductor_id = conductor_id;
+
+    if (fecha_inicio) {
+      const desde = new Date(fecha_inicio);
+      if (isNaN(desde.getTime())) {
+        return res.status(400).json({ error: 'fecha_inicio no es válida. Usa el formato AAAA-MM-DD' });
+      }
+      where.periodo_inicio = { gte: desde };
+    }
+
+    if (fecha_fin) {
+      const hasta = new Date(fecha_fin);
+      if (isNaN(hasta.getTime())) {
+        return res.status(400).json({ error: 'fecha_fin no es válida. Usa el formato AAAA-MM-DD' });
+      }
+      if (fecha_fin.length === 10) hasta.setUTCHours(23, 59, 59, 999);
+      where.periodo_fin = { lte: hasta };
+    }
+
+    const reportes = await prisma.reportes_seguridad.findMany({
+      where,
+      include: { conductores: { select: { nombre: true } } },
+      orderBy: { fecha_generacion: 'desc' }
+    });
+
+    const filas = reportes.map(r => ({
+      conductor: r.conductores?.nombre || 'Sin conductor',
+      periodo_inicio: formatearFecha(r.periodo_inicio),
+      periodo_fin: formatearFecha(r.periodo_fin),
+      nivel: formatearNivel(r.nivel_seguridad_promedio),
+      incidentes: r.total_incidentes ?? 0,
+      generado: formatearFecha(r.fecha_generacion)
+    }));
+
+    const hoy = formatearFecha(new Date());
+    const textoFiltros = [
+      conductor_id ? `Conductor: ${filas[0]?.conductor || conductor_id}` : null,
+      fecha_inicio ? `Desde: ${fecha_inicio}` : null,
+      fecha_fin ? `Hasta: ${fecha_fin}` : null
+    ].filter(Boolean).join('   ') || 'Sin filtros (todos los reportes)';
+
+    // ---------------- EXCEL ----------------
+    if (formato === 'excel') {
+      const libro = new ExcelJS.Workbook();
+      libro.creator = 'DriveGuard-AI';
+      const hoja = libro.addWorksheet('Reportes de seguridad');
+
+      hoja.columns = [
+        { header: 'Conductor', key: 'conductor', width: 28 },
+        { header: 'Periodo inicio', key: 'periodo_inicio', width: 16 },
+        { header: 'Periodo fin', key: 'periodo_fin', width: 16 },
+        { header: 'Nivel de seguridad promedio', key: 'nivel', width: 28 },
+        { header: 'Total incidentes', key: 'incidentes', width: 18 },
+        { header: 'Fecha de generación', key: 'generado', width: 20 }
+      ];
+
+      hoja.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      hoja.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
+
+      if (filas.length === 0) {
+        hoja.addRow({ conductor: 'No hay reportes para los filtros seleccionados' });
+      } else {
+        filas.forEach(fila => hoja.addRow(fila));
+      }
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="reporte-seguridad-${hoy}.xlsx"`);
+      await libro.xlsx.write(res);
+      return res.end();
+    }
+
+    // ---------------- PDF ----------------
+    const doc = new PDFDocument({ size: 'A4', margin: 40 });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="reporte-seguridad-${hoy}.pdf"`);
+    doc.pipe(res);
+
+    doc.fontSize(18).font('Helvetica-Bold').text('DriveGuard-AI — Reporte de seguridad');
+    doc.moveDown(0.3);
+    doc.fontSize(10).font('Helvetica').fillColor('#555555')
+      .text(`Generado el ${hoy}`)
+      .text(textoFiltros)
+      .text(`Total de reportes: ${filas.length}`);
+    doc.fillColor('black').moveDown(1);
+
+    // Columnas de la tabla (ancho útil de A4 con márgenes de 40 = 515)
+    const columnas = [
+      { titulo: 'Conductor', clave: 'conductor', ancho: 150 },
+      { titulo: 'Periodo inicio', clave: 'periodo_inicio', ancho: 80 },
+      { titulo: 'Periodo fin', clave: 'periodo_fin', ancho: 80 },
+      { titulo: 'Nivel prom.', clave: 'nivel', ancho: 65 },
+      { titulo: 'Incidentes', clave: 'incidentes', ancho: 60 },
+      { titulo: 'Generado', clave: 'generado', ancho: 80 }
+    ];
+    const ALTO_FILA = 20;
+    const X_INICIO = 40;
+
+    const dibujarFila = (valores, y, esEncabezado) => {
+      if (esEncabezado) {
+        doc.rect(X_INICIO, y, 515, ALTO_FILA).fill('#2563eb');
+        doc.fillColor('white').font('Helvetica-Bold');
+      } else {
+        doc.fillColor('black').font('Helvetica');
+      }
+      let x = X_INICIO;
+      columnas.forEach(col => {
+        doc.fontSize(9).text(String(valores[col.clave] ?? col.titulo), x + 4, y + 6, {
+          width: col.ancho - 8,
+          ellipsis: true,
+          lineBreak: false
+        });
+        x += col.ancho;
+      });
+      if (!esEncabezado) {
+        doc.moveTo(X_INICIO, y + ALTO_FILA).lineTo(X_INICIO + 515, y + ALTO_FILA)
+          .strokeColor('#dddddd').stroke();
+      }
+    };
+
+    const encabezado = {};
+    columnas.forEach(col => { encabezado[col.clave] = col.titulo; });
+
+    let y = doc.y;
+    dibujarFila(encabezado, y, true);
+    y += ALTO_FILA;
+
+    if (filas.length === 0) {
+      doc.fillColor('black').font('Helvetica').fontSize(10)
+        .text('No hay reportes para los filtros seleccionados.', X_INICIO, y + 10);
+    } else {
+      filas.forEach(fila => {
+        if (y + ALTO_FILA > doc.page.height - 50) {
+          doc.addPage();
+          y = 40;
+          dibujarFila(encabezado, y, true);
+          y += ALTO_FILA;
+        }
+        dibujarFila(fila, y, false);
+        y += ALTO_FILA;
+      });
+    }
+
+    doc.end();
+  } catch (error) {
+    console.error(error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message });
+    } else {
+      res.end();
+    }
   }
 });
 
