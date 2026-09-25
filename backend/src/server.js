@@ -327,6 +327,7 @@ app.get('/prueba-simple', (req, res) => { res.json({ funciona: true }); });
 // ============================================================
 // HU-16: Comparación del nivel de seguridad entre conductores o vehículos
 // Usa la MISMA fórmula que US-09 (/recorridos/:id/nivel-seguridad)
+// Filtros: ?por=conductor|vehiculo  &fecha_inicio=AAAA-MM-DD  &fecha_fin=AAAA-MM-DD
 // ============================================================
 function calcularNivelSeguridad(lecturas) {
   if (lecturas.length === 0) return null;
@@ -362,8 +363,41 @@ app.get('/comparacion/nivel-seguridad', async (req, res) => {
       });
     }
 
-    // Traer todos los recorridos con lo necesario para el cálculo
+    // Filtro por fechas (sobre la fecha de inicio del recorrido)
+    const { fecha_inicio, fecha_fin } = req.query;
+    const filtroFecha = {};
+
+    if (fecha_inicio) {
+      const desde = new Date(fecha_inicio);
+      if (isNaN(desde.getTime())) {
+        return res.status(400).json({ error: "fecha_inicio no es válida. Usa el formato AAAA-MM-DD" });
+      }
+      filtroFecha.gte = desde;
+    }
+
+    if (fecha_fin) {
+      const hasta = new Date(fecha_fin);
+      if (isNaN(hasta.getTime())) {
+        return res.status(400).json({ error: "fecha_fin no es válida. Usa el formato AAAA-MM-DD" });
+      }
+      // Si solo viene la fecha (AAAA-MM-DD), incluir el día completo
+      if (fecha_fin.length === 10) {
+        hasta.setUTCHours(23, 59, 59, 999);
+      }
+      filtroFecha.lte = hasta;
+    }
+
+    if (filtroFecha.gte && filtroFecha.lte && filtroFecha.gte > filtroFecha.lte) {
+      return res.status(400).json({ error: "fecha_inicio no puede ser posterior a fecha_fin" });
+    }
+
+    const where = Object.keys(filtroFecha).length > 0
+      ? { fecha_inicio: filtroFecha }
+      : {};
+
+    // Traer los recorridos (filtrados por fecha si aplica) con lo necesario para el cálculo
     const recorridos = await prisma.recorridos.findMany({
+      where,
       select: {
         id: true,
         conductor_id: true,
@@ -447,6 +481,10 @@ app.get('/comparacion/nivel-seguridad', async (req, res) => {
 
     res.json({
       comparacion_por: por,
+      filtros: {
+        fecha_inicio: fecha_inicio || null,
+        fecha_fin: fecha_fin || null
+      },
       total: resultados.length,
       resultados
     });
