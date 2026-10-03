@@ -6,6 +6,10 @@ const { PrismaClient } = require('@prisma/client');
 const PDFDocument = require('pdfkit');   // HU-20: exportar reportes en PDF
 const ExcelJS = require('exceljs');      // HU-20: exportar reportes en Excel
 const { initSockets, emitirAlerta, SEVERIDAD } = require('./sockets'); // NUEVO
+const jwt = require('jsonwebtoken'); // Historia 18
+const { verificarPassword } = require('./auth'); // Historia 18
+const { verificarToken } = require('./middlewareAuth'); // Historia 18
+
 const app = express();
 const server = http.createServer(app); // NUEVO — reemplaza el uso directo de app.listen()
 const prisma = new PrismaClient();
@@ -14,28 +18,60 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 initSockets(server); // NUEVO — deja el canal de Socket.io activo sobre el mismo servidor
-
-// Endpoint TEMPORAL de prueba (Historia 11 + Historia 12) — permite elegir
-// severidad para probar los 3 niveles y confirmar que también le llega
-// al supervisor. Body opcional: { "severidad": "leve" | "moderada" | "grave" }
 app.post('/test-alerta/:conductorId', (req, res) => {
-  const severidad = req.body?.severidad || SEVERIDAD.GRAVE;
-
   emitirAlerta(req.params.conductorId, {
-    severidad,
+    severidad: SEVERIDAD.GRAVE,
     tipo: 'frenada_brusca',
-    mensaje: `Alerta de prueba (${severidad})`,
+    mensaje: 'Alerta de prueba',
   });
-
   res.sendStatus(200);
 });
-
 app.get('/', (req, res) => {
   res.send('DriveGuard API activa');
 });
 
+// ============================================================
+// Historia 18 — Inicio de sesión seguro al dashboard
+// ============================================================
+app.post('/login', async (req, res) => {
+  try {
+    const { correo, contrasena } = req.body;
+
+    if (!correo || !contrasena) {
+      return res.status(400).json({ error: 'correo y contrasena son obligatorios' });
+    }
+
+    const usuario = await prisma.usuarios.findUnique({ where: { correo } });
+
+    // Mismo mensaje de error tanto si el correo no existe como si la
+    // contraseña está mal — así no le damos pistas a quien intenta adivinar.
+    if (!usuario || !usuario.activo) {
+      return res.status(401).json({ error: 'Credenciales inválidas' });
+    }
+
+    const passwordValida = await verificarPassword(contrasena, usuario.contrasena_hash);
+    if (!passwordValida) {
+      return res.status(401).json({ error: 'Credenciales inválidas' });
+    }
+
+    const token = jwt.sign(
+      { id: usuario.id, correo: usuario.correo, rol: usuario.rol },
+      process.env.JWT_SECRET,
+      { expiresIn: '8h' } // la sesión dura 8 horas, ajustable
+    );
+
+    res.json({
+      token,
+      usuario: { id: usuario.id, nombre: usuario.nombre, correo: usuario.correo, rol: usuario.rol }
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Endpoint de prueba: leer conductores de la base de datos
-app.get('/conductores', async (req, res) => {
+app.get('/conductores', verificarToken, async (req, res) => {
   try {
     const conductores = await prisma.conductores.findMany();
     res.json(conductores);
@@ -45,7 +81,7 @@ app.get('/conductores', async (req, res) => {
 });
 
 // Endpoint para listar los recorridos existentes
-app.get('/recorridos', async (req, res) => {
+app.get('/recorridos', verificarToken, async (req, res) => {
   try {
     const recorridos = await prisma.recorridos.findMany();
     res.json(recorridos);
@@ -92,15 +128,7 @@ app.post('/lecturas', async (req, res) => {
 
     // Deteccion automatica de frenada brusca -> crea un incidente (US-07)
       if (aceleracion <= UMBRAL_FRENADA_BRUSCA) {
-        // Tres niveles de riesgo según qué tan fuerte fue la frenada (Historia 11)
-        let nivelRiesgo;
-        if (aceleracion <= -6) {
-          nivelRiesgo = 'alto';
-        } else if (aceleracion <= -4.5) {
-          nivelRiesgo = 'medio';
-        } else {
-          nivelRiesgo = 'bajo';
-        }
+        const nivelRiesgo = aceleracion <= -5 ? 'alto' : 'medio';
         const tipo = 'frenada_brusca';
         const fecha = new Date();
 
@@ -124,24 +152,12 @@ app.post('/lecturas', async (req, res) => {
 
           console.log('⚠️  Incidente detectado y guardado:', nuevoIncidente);
 
-          // Historia 11 — avisar al conductor en tiempo real por Socket.io,
-          // con los tres niveles de severidad ya completos.
-          const MAPA_SEVERIDAD = {
-            bajo: SEVERIDAD.LEVE,
-            medio: SEVERIDAD.MODERADA,
-            alto: SEVERIDAD.GRAVE,
-          };
-          const MAPA_MENSAJE = {
-            bajo: 'Frenada detectada, mantén precaución',
-            medio: 'Frenada brusca detectada',
-            alto: 'Frenada muy brusca — riesgo alto',
-          };
-
+          // NUEVO (Historia 11) — avisar al conductor en tiempo real por Socket.io.
           if (conductor_id) {
             emitirAlerta(conductor_id, {
               tipo: tipo,
-              severidad: MAPA_SEVERIDAD[nivelRiesgo],
-              mensaje: MAPA_MENSAJE[nivelRiesgo],
+              severidad: nivelRiesgo === 'alto' ? SEVERIDAD.GRAVE : SEVERIDAD.MODERADA,
+              mensaje: 'Frenada brusca detectada',
             });
           }
         }
@@ -155,7 +171,7 @@ app.post('/lecturas', async (req, res) => {
 });
 
 // Endpoint: calcular nivel de seguridad y detectar comportamiento anormal (US-09 y US-10)
-app.get('/recorridos/:id/nivel-seguridad', async (req, res) => {
+app.get('/recorridos/:id/nivel-seguridad', verificarToken, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -243,7 +259,7 @@ app.post('/gps', async (req, res) => {
 });
 
 // Endpoint: obtener las coordenadas GPS de un recorrido (para el mapa - Historia 14)
-app.get('/recorridos/:id/gps', async (req, res) => {
+app.get('/recorridos/:id/gps', verificarToken, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -262,7 +278,7 @@ app.get('/recorridos/:id/gps', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message });
-      }
+  }
 });
 
 // Ruta de prueba simple, para diagnosticar por qué otras rutas nuevas no cargan
@@ -271,7 +287,7 @@ app.get('/prueba-simple', (req, res) => {
 });
 
 // HU-13: Historial de incidentes con filtros (conductor, vehiculo, fechas)
-app.get('/incidentes/historial', async (req, res) => {
+app.get('/incidentes/historial', verificarToken, async (req, res) => {
   try {
     const { conductor_id, fecha_inicio, fecha_fin, tipo_vehiculo, placa } = req.query;
     const condiciones = [];
@@ -307,7 +323,7 @@ app.get('/incidentes/historial', async (req, res) => {
 });
 
 // HU-15: Nivel de seguridad promedio de un conductor
-app.get('/reportes/nivel-seguridad/:conductor_id', async (req, res) => {
+app.get('/reportes/nivel-seguridad/:conductor_id', verificarToken, async (req, res) => {
   try {
     const { conductor_id } = req.params;
 
@@ -340,7 +356,7 @@ app.get('/reportes/nivel-seguridad/:conductor_id', async (req, res) => {
 });
 
 // Endpoints auxiliares para los dropdowns del filtro visual
-app.get('/vehiculos/tipos', async (req, res) => {
+app.get('/vehiculos/tipos', verificarToken, async (req, res) => {
   try {
     const tipos = await prisma.vehiculos.findMany({
       distinct: ['tipo'],
@@ -351,7 +367,7 @@ app.get('/vehiculos/tipos', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-app.get('/recorridos/:id/incidentes-mapa', async (req, res) => {
+app.get('/recorridos/:id/incidentes-mapa', verificarToken, async (req, res) => {
   try {
     const { id } = req.params;
     const incidentes = await prisma.$queryRaw`
@@ -403,7 +419,7 @@ function calcularNivelSeguridad(lecturas) {
   return { nivel, excesosVelocidad, frenadasBruscas };
 }
 
-app.get('/comparacion/nivel-seguridad', async (req, res) => {
+app.get('/comparacion/nivel-seguridad', verificarToken, async (req, res) => {
   try {
     const por = req.query.por || 'conductor';
 
@@ -559,7 +575,7 @@ function formatearNivel(nivel) {
   return Math.round(nivel * 10) / 10;
 }
 
-app.get('/reportes/exportar', async (req, res) => {
+app.get('/reportes/exportar', verificarToken, async (req, res) => {
   try {
     const formato = (req.query.formato || '').toLowerCase();
     const { conductor_id, fecha_inicio, fecha_fin } = req.query;
