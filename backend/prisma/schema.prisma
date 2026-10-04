@@ -46,6 +46,7 @@ model incidentes {
 
   @@index([fecha], map: "idx_incidentes_fecha")
   @@index([recorrido_id], map: "idx_incidentes_recorrido")
+  @@index([recorrido_id, fecha(sort: Desc)], map: "idx_incidentes_recorrido_fecha")
 }
 
 model lecturas_sensor {
@@ -85,6 +86,8 @@ model reportes_seguridad {
   total_incidentes         Int?         @default(0)
   fecha_generacion         DateTime?    @default(now()) @db.Timestamp(6)
   conductores              conductores? @relation(fields: [conductor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([conductor_id], map: "idx_reportes_conductor")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -133,4 +136,14 @@ model vehiculos {
   conductores    conductores? @relation(fields: [conductor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([conductor_id], map: "idx_vehiculos_conductor")
+}
+
+model usuarios {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre          String    @db.VarChar(100)
+  correo          String    @unique @db.VarChar(150)
+  contrasena_hash String
+  rol             String    @default("supervisor") @db.VarChar(20)
+  activo          Boolean   @default(true)
+  fecha_registro  DateTime? @default(now()) @db.Timestamp(6)
 }
