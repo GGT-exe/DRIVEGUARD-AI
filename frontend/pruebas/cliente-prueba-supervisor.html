@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<!--
+  cliente-prueba-supervisor.html
+  Historia 12 — página mínima para probar que el supervisor de flota
+  recibe, en tiempo real, las alertas de TODOS los conductores.
+  Igual que con el conductor: esto no es el dashboard final, es el
+  banco de pruebas del canal.
+-->
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Prueba canal de alertas — Supervisor</title>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; }
+    table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+    th, td { border: 1px solid #ccc; padding: 0.5rem 0.8rem; text-align: left; }
+    th { background: #f0f0f0; }
+    .leve { background: #fff3cd; }
+    .moderada { background: #ffe0b2; }
+    .grave { background: #ffcdd2; }
+  </style>
+</head>
+<body>
+  <h2>Canal de alertas — prueba supervisor de flota</h2>
+  <p>Estado de conexión: <span id="estado">conectando...</span></p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Hora</th>
+        <th>Conductor</th>
+        <th>Severidad</th>
+        <th>Mensaje</th>
+      </tr>
+    </thead>
+    <tbody id="tabla-alertas"></tbody>
+  </table>
+
+  <script>
+    const BACKEND_URL = "http://localhost:4000"; // ajustar si tu backend corre en otro puerto
+
+    const socket = io(BACKEND_URL);
+    const estado = document.getElementById("estado");
+    const tabla = document.getElementById("tabla-alertas");
+
+    socket.on("connect", () => {
+      estado.textContent = "conectado";
+      socket.emit("registrar_supervisor");
+    });
+
+    socket.on("disconnect", () => {
+      estado.textContent = "desconectado";
+    });
+
+    // Historia 12 — recibe la alerta de CUALQUIER conductor de la flota
+    socket.on("alerta_flota", (data) => {
+      const fila = document.createElement("tr");
+      fila.className = data.severidad;
+
+      const hora = new Date(data.timestamp).toLocaleTimeString();
+      fila.innerHTML = `
+        <td>${hora}</td>
+        <td>${data.conductorId}</td>
+        <td>${data.severidad.toUpperCase()}</td>
+        <td>${data.mensaje}</td>
+      `;
+
+      // La alerta más reciente va arriba de la tabla
+      tabla.prepend(fila);
+    });
+  </script>
+</body>
+</html>

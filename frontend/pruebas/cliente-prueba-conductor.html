@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<!--
+  cliente-prueba-conductor.html
+  Historia 11 — página mínima para probar, HOY, que el canal de alertas
+  llega al conductor. No es la interfaz final del conductor, solo el
+  "banco de pruebas" del canal en tiempo real.
+
+  Cómo probarlo:
+  1. Levanta el backend con Socket.io ya integrado.
+  2. Abre este archivo en el navegador.
+  3. Cambia CONDUCTOR_ID por un id de prueba y dispara una alerta desde
+     el backend (ver integracion-servidor.js) o desde Postman.
+-->
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Prueba canal de alertas — Conductor</title>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; }
+    #alerta { display: none; padding: 1.5rem; margin-top: 1rem; border-radius: 8px; font-weight: bold; }
+    .leve { background: #fff3cd; }
+    .moderada { background: #ffe0b2; }
+    .grave { background: #ffcdd2; }
+  </style>
+</head>
+<body>
+  <h2>Canal de alertas — prueba conductor</h2>
+  <p>Estado de conexión: <span id="estado">conectando...</span></p>
+  <div id="alerta"></div>
+
+  <script>
+    const CONDUCTOR_ID = "conductor-prueba-1"; // ajustar al id real del conductor de prueba
+    const BACKEND_URL = "http://localhost:4000"; // ajustar a la URL real del backend
+
+    const socket = io(BACKEND_URL);
+    const estado = document.getElementById("estado");
+    const cajaAlerta = document.getElementById("alerta");
+    let sonido; // se crea solo tras interacción del usuario, por política de autoplay del navegador
+
+    socket.on("connect", () => {
+      estado.textContent = "conectado";
+      socket.emit("registrar_conductor", CONDUCTOR_ID);
+    });
+
+    socket.on("disconnect", () => {
+      estado.textContent = "desconectado";
+    });
+
+    socket.on("alerta", (data) => {
+      cajaAlerta.style.display = "block";
+      cajaAlerta.className = data.severidad; // leve | moderada | grave
+      cajaAlerta.textContent = `[${data.severidad.toUpperCase()}] ${data.mensaje}`;
+
+      // Aviso sonoro simple para validar el canal (el sonido real de Historia 11
+      // se define más adelante en el sprint)
+      try {
+        const FRECUENCIAS = { leve: 330, moderada: 550, grave: 880 };
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        osc.frequency.value = FRECUENCIAS[data.severidad] || 440;
+        osc.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.3);
+      } catch (e) {
+        console.warn("No se pudo reproducir el sonido de prueba", e);
+      }
+    });
+  </script>
+</body>
+</html>
