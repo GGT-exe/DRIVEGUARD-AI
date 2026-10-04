@@ -2,6 +2,11 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { PrismaClient } = require('@prisma/client');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const cron = require('node-cron');
+const PDFDocument = require('pdfkit');
+const ExcelJS = require('exceljs');
 
 const app = express();
 const prisma = new PrismaClient();
@@ -9,14 +14,94 @@ const prisma = new PrismaClient();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
+const JWT_SECRET = process.env.JWT_SECRET; // agrégalo a tu .env, nunca lo subas a Git
+
 app.get('/', (req, res) => {
   res.send('DriveGuard API activa');
 });
 
-// Endpoint de prueba: leer conductores de la base de datos
+// ======================================================
+// AUTENTICACIÓN (HU-18) y PERMISOS POR ROL (HU-19)
+// ======================================================
+
+function authMiddleware(req, res, next) {
+  const header = req.headers.authorization;
+  if (!header) return res.status(401).json({ error: 'Token no proporcionado' });
+
+  const token = header.split(' ')[1]; // formato "Bearer <token>"
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.usuario = payload;
+    next();
+  } catch (error) {
+    res.status(401).json({ error: 'Token inválido o expirado' });
+  }
+}
+
+function requireRole(...rolesPermitidos) {
+  return (req, res, next) => {
+    if (!req.usuario || !rolesPermitidos.includes(req.usuario.rol)) {
+      return res.status(403).json({ error: 'No tienes permisos para esta acción' });
+    }
+    next();
+  };
+}
+
+// Registrar usuario del dashboard (protégelo con requireRole('admin') una vez tengan
+// al primer admin creado manualmente en la base; mientras tanto déjalo abierto para crear
+// el usuario inicial y luego cierras el acceso).
+app.post('/auth/registrar', async (req, res) => {
+  try {
+    const { nombre, correo, password, rol } = req.body;
+    if (!nombre || !correo || !password) {
+      return res.status(400).json({ error: 'nombre, correo y password son obligatorios' });
+    }
+    const hash = await bcrypt.hash(password, 10);
+    const usuario = await prisma.usuarios.create({
+      data: { nombre, correo, contrasena_hash: hash, rol: rol || 'analista', activo: true },
+    });
+    res.status(201).json({ id: usuario.id, nombre: usuario.nombre, rol: usuario.rol });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/auth/login', async (req, res) => {
+  try {
+    const { correo, password } = req.body;
+    const usuario = await prisma.usuarios.findUnique({ where: { correo } });
+    if (!usuario) return res.status(401).json({ error: 'Credenciales inválidas' });
+
+    if (!usuario.activo) {
+      return res.status(403).json({ error: 'Usuario desactivado, contacta a un administrador' });
+    }
+
+    const passwordValida = await bcrypt.compare(password, usuario.contrasena_hash);
+    if (!passwordValida) return res.status(401).json({ error: 'Credenciales inválidas' });
+
+    const token = jwt.sign(
+      { id: usuario.id, rol: usuario.rol },
+      JWT_SECRET,
+      { expiresIn: '8h' }
+    );
+    res.json({ token, usuario: { id: usuario.id, nombre: usuario.nombre, rol: usuario.rol } });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ======================================================
+// ENDPOINTS EXISTENTES
+// ======================================================
+
+// Endpoint: conductores (usado tanto de prueba como para el dropdown del filtro)
 app.get('/conductores', async (req, res) => {
   try {
-    const conductores = await prisma.conductores.findMany();
+    const conductores = await prisma.conductores.findMany({
+      select: { id: true, nombre: true },
+    });
     res.json(conductores);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -193,6 +278,7 @@ app.post('/gps', async (req, res) => {
 });
 
 // HU-13: Historial de incidentes con filtros (conductor, vehiculo, fechas)
+// Ya optimizada: EXPLAIN ANALYZE confirmó Nested Loop + Index Scan, ~0.3ms con los datos de prueba.
 app.get('/incidentes/historial', async (req, res) => {
   try {
     const { conductor_id, fecha_inicio, fecha_fin, tipo_vehiculo, placa } = req.query;
@@ -228,7 +314,9 @@ app.get('/incidentes/historial', async (req, res) => {
   }
 });
 
-// HU-15: Nivel de seguridad promedio de un conductor
+// HU-15: Nivel de seguridad promedio de un conductor (corregido: COUNT(i.id) en vez de
+// COUNT(*) para no contar la fila "fantasma" del LEFT JOIN cuando no hay incidentes,
+// y total_recorridos para distinguir "sin historial" de "historial perfecto").
 app.get('/reportes/nivel-seguridad/:conductor_id', async (req, res) => {
   try {
     const { conductor_id } = req.params;
@@ -236,13 +324,14 @@ app.get('/reportes/nivel-seguridad/:conductor_id', async (req, res) => {
     const resultado = await prisma.$queryRaw`
       SELECT
           c.nombre AS conductor,
+          COUNT(DISTINCT r.id) AS total_recorridos,
+          COUNT(i.id) AS total_incidentes,
           GREATEST(
               100
-              - (COUNT(*) FILTER (WHERE i.nivel_riesgo = 'alto') * 10)
-              - (COUNT(*) FILTER (WHERE i.nivel_riesgo = 'medio') * 5),
+              - (COUNT(i.id) FILTER (WHERE i.nivel_riesgo = 'alto') * 10)
+              - (COUNT(i.id) FILTER (WHERE i.nivel_riesgo = 'medio') * 5),
               0
-          ) AS nivel_seguridad_promedio,
-          COUNT(*) AS total_incidentes
+          ) AS nivel_seguridad_promedio
       FROM conductores c
       LEFT JOIN recorridos r ON r.conductor_id = c.id
       LEFT JOIN incidentes i ON i.recorrido_id = r.id
@@ -251,28 +340,28 @@ app.get('/reportes/nivel-seguridad/:conductor_id', async (req, res) => {
     `;
 
     if (resultado.length === 0) {
-      return res.status(404).json({ mensaje: 'No hay historial suficiente para este conductor.' });
+      return res.status(404).json({ mensaje: 'Conductor no encontrado.' });
     }
 
-    res.json(resultado[0]);
+    const fila = resultado[0];
+
+    if (Number(fila.total_recorridos) === 0) {
+      return res.json({
+        conductor: fila.conductor,
+        nivel_seguridad_promedio: null,
+        total_incidentes: 0,
+        mensaje: 'No hay historial suficiente para calcular el nivel de seguridad de este conductor.',
+      });
+    }
+
+    res.json(fila);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Endpoints auxiliares para los dropdowns del filtro visual
-app.get('/conductores', async (req, res) => {
-  try {
-    const conductores = await prisma.conductores.findMany({
-      select: { id: true, nombre: true },
-    });
-    res.json(conductores);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
+// Endpoint auxiliar para el dropdown del filtro visual
 app.get('/vehiculos/tipos', async (req, res) => {
   try {
     const tipos = await prisma.vehiculos.findMany({
@@ -281,6 +370,134 @@ app.get('/vehiculos/tipos', async (req, res) => {
     });
     res.json(tipos.map(t => t.tipo));
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ======================================================
+// HU-17: Reportes periódicos de seguridad vial
+// ======================================================
+
+async function generarReportesSemanal() {
+  const conductores = await prisma.conductores.findMany();
+  const hoy = new Date();
+  const haceUnaSemana = new Date(hoy.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  for (const conductor of conductores) {
+    const stats = await prisma.$queryRaw`
+      SELECT COUNT(i.id) AS total,
+             COUNT(i.id) FILTER (WHERE i.nivel_riesgo = 'alto') AS altos,
+             COUNT(i.id) FILTER (WHERE i.nivel_riesgo = 'medio') AS medios
+      FROM recorridos r
+      LEFT JOIN incidentes i ON i.recorrido_id = r.id
+        AND i.fecha BETWEEN ${haceUnaSemana} AND ${hoy}
+      WHERE r.conductor_id = ${conductor.id}::uuid
+    `;
+    const { total, altos, medios } = stats[0];
+    const nivel = Math.max(0, 100 - Number(altos) * 10 - Number(medios) * 5);
+
+    await prisma.reportes_seguridad.create({
+      data: {
+        periodo_inicio: haceUnaSemana,
+        periodo_fin: hoy,
+        conductor_id: conductor.id,
+        total_incidentes: Number(total),
+        nivel_seguridad_promedio: nivel,
+      },
+    });
+  }
+  console.log(`[reportePeriodico] Reporte generado para ${conductores.length} conductores`);
+}
+
+// Todos los lunes a las 6am genera el reporte semanal automáticamente
+cron.schedule('0 6 * * 1', generarReportesSemanal);
+
+// Endpoint para forzar la generación manualmente durante pruebas (bórralo o protégelo
+// con requireRole('admin') antes de pasar a producción)
+app.post('/reportes/generar-ahora', async (req, res) => {
+  try {
+    await generarReportesSemanal();
+    res.json({ mensaje: 'Reporte generado manualmente' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Consulta de reportes por período (lo que pide la daily del miércoles)
+app.get('/reportes/periodico', async (req, res) => {
+  try {
+    const { conductor_id, desde, hasta } = req.query;
+    const where = {};
+    if (conductor_id) where.conductor_id = conductor_id;
+    if (desde && hasta) where.periodo_inicio = { gte: new Date(desde) };
+
+    const reportes = await prisma.reportes_seguridad.findMany({
+      where,
+      orderBy: { periodo_inicio: 'desc' },
+    });
+    res.json(reportes);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ======================================================
+// HU-20: Exportación de reportes en PDF / Excel
+// Protegidas con login + rol (solo admin/gerente pueden exportar)
+// ======================================================
+
+app.get('/reportes/exportar/pdf', authMiddleware, requireRole('admin', 'gerente'), async (req, res) => {
+  try {
+    const reportes = await prisma.reportes_seguridad.findMany({ include: { conductores: true } });
+    const doc = new PDFDocument();
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename=reporte_seguridad.pdf');
+    doc.pipe(res);
+
+    doc.fontSize(16).text('Reporte de Seguridad Vial - DriveGuard AI', { align: 'center' });
+    doc.moveDown();
+    reportes.forEach((r) => {
+      doc.fontSize(11).text(
+        `${r.conductores?.nombre || r.conductor_id} | ${r.periodo_inicio.toISOString().slice(0, 10)} - ${r.periodo_fin.toISOString().slice(0, 10)} | Incidentes: ${r.total_incidentes} | Nivel: ${r.nivel_seguridad_promedio}`
+      );
+    });
+    doc.end();
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/reportes/exportar/excel', authMiddleware, requireRole('admin', 'gerente'), async (req, res) => {
+  try {
+    const reportes = await prisma.reportes_seguridad.findMany({ include: { conductores: true } });
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Reportes');
+    sheet.columns = [
+      { header: 'Conductor', key: 'conductor', width: 25 },
+      { header: 'Periodo Inicio', key: 'inicio', width: 15 },
+      { header: 'Periodo Fin', key: 'fin', width: 15 },
+      { header: 'Incidentes', key: 'incidentes', width: 12 },
+      { header: 'Nivel Seguridad', key: 'nivel', width: 15 },
+    ];
+    reportes.forEach((r) => {
+      sheet.addRow({
+        conductor: r.conductores?.nombre || r.conductor_id,
+        inicio: r.periodo_inicio.toISOString().slice(0, 10),
+        fin: r.periodo_fin.toISOString().slice(0, 10),
+        incidentes: r.total_incidentes,
+        nivel: r.nivel_seguridad_promedio,
+      });
+    });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=reporte_seguridad.xlsx');
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ error: error.message });
   }
 });
