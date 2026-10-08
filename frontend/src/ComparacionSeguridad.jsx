@@ -13,7 +13,7 @@ import {
 } from 'recharts'
 
 // HU-16: Gráfico de comparación del nivel de seguridad entre conductores o vehículos
-const API_URL = 'http://localhost:4000'
+const API_URL = 'https://driveguard-backend-zdtk.onrender.com'
 
 // Mismos umbrales que US-10 en el backend
 const UMBRAL_NIVEL_BAJO = 50
