@@ -707,6 +707,7 @@ app.get('/reportes/exportar', verificarToken, requireRol('admin', 'gerente'), as
       columnas.forEach(col => {
         doc.fontSize(9).text(String(valores[col.clave] ?? col.titulo), x + 4, y + 6, {
           width: col.ancho - 8,
+          height: ALTO_FILA - 8,
           ellipsis: true,
           lineBreak: false
         });
