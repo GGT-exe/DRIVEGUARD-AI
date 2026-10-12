@@ -7,6 +7,7 @@ import Mapa from './Mapa'
 import ComparacionSeguridad from './ComparacionSeguridad'
 import NotificacionesAlertas from './NotificacionesAlertas'
 import ErrorBoundary from './ErrorBoundary'
+import ConfiguracionUmbrales from './ConfiguracionUmbrales'
 import './App.css'
 
 function App() {
@@ -17,6 +18,7 @@ function App() {
       <ErrorBoundary><Camara /></ErrorBoundary>
       <ErrorBoundary><Mapa /></ErrorBoundary>
       <ErrorBoundary><ComparacionSeguridad /></ErrorBoundary>
+      <ErrorBoundary><ConfiguracionUmbrales /></ErrorBoundary>
       <NotificacionesAlertas />
       <section id="center">
         <div className="hero">
