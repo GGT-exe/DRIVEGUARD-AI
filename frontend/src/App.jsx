@@ -5,6 +5,8 @@ import viteLogo from './assets/vite.svg'
 import Camara from './Camara'
 import Mapa from './Mapa'
 import ComparacionSeguridad from './ComparacionSeguridad'
+import NotificacionesAlertas from './NotificacionesAlertas'
+import ErrorBoundary from './ErrorBoundary'
 import './App.css'
 
 function App() {
@@ -12,9 +14,10 @@ function App() {
 
   return (
     <>
-      <Camara />
-      <Mapa />
-      <ComparacionSeguridad />
+      <ErrorBoundary><Camara /></ErrorBoundary>
+      <ErrorBoundary><Mapa /></ErrorBoundary>
+      <ErrorBoundary><ComparacionSeguridad /></ErrorBoundary>
+      <NotificacionesAlertas />
       <section id="center">
         <div className="hero">
           <img src={heroImg} className="base" width="170" height="179" alt="" />
