@@ -36,7 +36,7 @@ function Camara() {
     try {
       setEstadoEnvio('Enviando...');
 
-      const respuesta = await fetch('https://driveguard-backend-zdtk.onrender.com/incidentes', {
+      const respuesta = await fetch('https://driveguard-ai-1yop.onrender.com/incidentes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

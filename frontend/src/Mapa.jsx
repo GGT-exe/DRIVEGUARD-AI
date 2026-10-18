@@ -27,14 +27,14 @@ function Mapa() {
   const [incidentes, setIncidentes] = useState([]);
 
   useEffect(() => {
-    fetch(`https://driveguard-backend-zdtk.onrender.com/recorridos/${RECORRIDO_ID}/gps`)
+    fetch(`https://driveguard-ai-1yop.onrender.com/recorridos/${RECORRIDO_ID}/gps`)
       .then(res => res.json())
       .then(data => setPuntos(data))
       .catch(err => console.error('Error cargando GPS:', err));
   }, []);
 
   useEffect(() => {
-    fetch(`https://driveguard-backend-zdtk.onrender.com/recorridos/${RECORRIDO_ID}/incidentes-mapa`)
+    fetch(`https://driveguard-ai-1yop.onrender.com/recorridos/${RECORRIDO_ID}/incidentes-mapa`)
       .then(res => res.json())
       .then(data => {
         console.log('Incidentes recibidos:', data.length, data);

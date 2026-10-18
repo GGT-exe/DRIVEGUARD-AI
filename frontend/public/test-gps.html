@@ -26,7 +26,7 @@
           document.getElementById('resultado').innerText = `Lat: ${lat}, Lng: ${lng} - Enviando...`;
 
           try {
-            const respuesta = await fetch('https://driveguard-backend-zdtk.onrender.com/gps', {
+            const respuesta = await fetch('https://driveguard-ai-1yop.onrender.com/gps', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ lat, lng, recorrido_id: RECORRIDO_ID })

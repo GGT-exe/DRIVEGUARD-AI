@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 // US-22: pantalla de configuracion de umbrales y parametros de seguridad.
 // Contrato esperado del backend: GET/PUT /configuracion (solo administrador).
-const API_URL = import.meta.env.VITE_API_URL || 'https://driveguard-backend-zdtk.onrender.com'
+const API_URL = import.meta.env.VITE_API_URL || 'https://driveguard-ai-1yop.onrender.com'
 
 const DEFAULTS = {
   nivel_seguridad_bajo: 50,
