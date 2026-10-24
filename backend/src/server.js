@@ -14,6 +14,8 @@ const { verificarToken } = require('./middlewareAuth');               // Histori
 const app = express();
 const server = http.createServer(app); // reemplaza el uso directo de app.listen()
 const prisma = new PrismaClient();
+const { verificarRol } = require('./middlewareRol');
+const { registrarAuditoria } = require('./auditoria');
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -100,6 +102,52 @@ app.post('/login', async (req, res) => {
       token,
       usuario: { id: usuario.id, nombre: usuario.nombre, correo: usuario.correo, rol: usuario.rol }
     });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Lista los umbrales configurables para cualquier usuario autenticado.
+app.get('/configuracion', verificarToken, async (req, res) => {
+  try {
+    const umbrales = await prisma.configuraciones_umbral.findMany({
+      orderBy: { clave: 'asc' }
+    });
+    res.json(umbrales);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Solo el administrador puede actualizar un umbral.
+app.put('/configuracion/:clave', verificarToken, verificarRol('administrador'), async (req, res) => {
+  try {
+    const { clave } = req.params;
+    const { valor } = req.body;
+
+    if (valor === undefined || valor === null || isNaN(Number(valor))) {
+      return res.status(400).json({ error: "'valor' es obligatorio y debe ser numérico" });
+    }
+
+    const anterior = await prisma.configuraciones_umbral.findUnique({ where: { clave } });
+    if (!anterior) {
+      return res.status(404).json({ error: `No existe un umbral con la clave '${clave}'` });
+    }
+
+    const actualizado = await prisma.configuraciones_umbral.update({
+      where: { clave },
+      data: { valor: Number(valor), actualizado_por: req.usuario.id }
+    });
+
+    await registrarAuditoria(
+      prisma,
+      req.usuario.id,
+      'cambio_configuracion',
+      `${clave}: ${anterior.valor} -> ${actualizado.valor}`
+    );
+
+    res.json(actualizado);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message });

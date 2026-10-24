@@ -46,7 +46,6 @@ model incidentes {
 
   @@index([fecha], map: "idx_incidentes_fecha")
   @@index([recorrido_id], map: "idx_incidentes_recorrido")
-  @@index([recorrido_id, fecha(sort: Desc)], map: "idx_incidentes_recorrido_fecha")
 }
 
 model lecturas_sensor {
@@ -86,8 +85,6 @@ model reportes_seguridad {
   total_incidentes         Int?         @default(0)
   fecha_generacion         DateTime?    @default(now()) @db.Timestamp(6)
   conductores              conductores? @relation(fields: [conductor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
-  @@index([conductor_id], map: "idx_reportes_conductor")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -137,7 +134,6 @@ model vehiculos {
 
   @@index([conductor_id], map: "idx_vehiculos_conductor")
 }
-
 model usuarios {
   id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   nombre          String    @db.VarChar(100)
@@ -146,4 +142,25 @@ model usuarios {
   rol             String    @default("supervisor") @db.VarChar(20)
   activo          Boolean   @default(true)
   fecha_registro  DateTime? @default(now()) @db.Timestamp(6)
+}
+// Historia 22 — Configuración de umbrales y parámetros de seguridad
+model configuraciones_umbral {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clave               String    @unique @db.VarChar(50)
+  valor               Float
+  descripcion         String?
+  actualizado_por     String?   @db.Uuid
+  fecha_actualizacion DateTime? @default(now()) @updatedAt @db.Timestamp(6)
+}
+
+// Historia 23 — Registro de auditoría de acciones de usuarios
+model auditoria {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuario_id String?   @db.Uuid
+  accion     String    @db.VarChar(50)
+  detalle    String?
+  fecha      DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([usuario_id], map: "idx_auditoria_usuario")
+  @@index([fecha], map: "idx_auditoria_fecha")
 }
