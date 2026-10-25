@@ -16,7 +16,11 @@ const server = http.createServer(app); // reemplaza el uso directo de app.listen
 const prisma = new PrismaClient();
 const { verificarRol } = require('./middlewareRol');
 const { registrarAuditoria } = require('./auditoria');
+const { iniciarMonitoreo, Sentry } = require('./monitoreo');
+const logger = require('./logger');
+const { manejarError } = require('./manejarError');
 
+iniciarMonitoreo();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
@@ -868,6 +872,17 @@ app.get('/reportes/periodico', verificarToken, async (req, res) => {
     console.error(error);
     res.status(500).json({ error: error.message });
   }
+});
+
+if (process.env.NODE_ENV === 'production') {
+  Sentry.setupExpressErrorHandler(app);
+}
+
+process.on('unhandledRejection', (error) => {
+  manejarError(error, 'unhandledRejection');
+});
+process.on('uncaughtException', (error) => {
+  manejarError(error, 'uncaughtException');
 });
 
 const PORT = process.env.PORT || 4000;
