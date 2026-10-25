@@ -1,0 +1,33 @@
+################ ANTES del índice ################
+=== Q1 (versión anterior): traer todas las lecturas del recorrido ===
+   ->  Parallel Seq Scan on lecturas_sensor (actual rows=333 loops=3)
+         Rows Removed by Filter: 166333
+ Planning Time: 0.126 ms
+ Execution Time: 28.187 ms
+   ->  Parallel Seq Scan on lecturas_sensor (actual rows=333 loops=3)
+         Rows Removed by Filter: 166333
+ Planning Time: 0.057 ms
+ Execution Time: 27.055 ms
+=== Q2 (versión nueva): COUNT total / excesos de velocidad / frenadas ===
+               ->  Parallel Seq Scan on lecturas_sensor (actual rows=333 loops=3)
+                     Rows Removed by Filter: 166333
+ Planning Time: 0.082 ms
+ Execution Time: 25.379 ms
+               ->  Parallel Seq Scan on lecturas_sensor (actual rows=99 loops=3)
+                     Rows Removed by Filter: 166567
+ Planning Time: 0.093 ms
+ Execution Time: 32.498 ms
+               ->  Parallel Seq Scan on lecturas_sensor (actual rows=81 loops=3)
+                     Rows Removed by Filter: 166586
+ Planning Time: 0.072 ms
+ Execution Time: 30.832 ms
+=== Q3: puntos del recorrido ordenados por tiempo (GET /recorridos/:id/gps) ===
+   ->  Sort (actual rows=333 loops=3)
+         Sort Key: "timestamp"
+         Sort Method: quicksort  Memory: 53kB
+         Worker 0:  Sort Method: quicksort  Memory: 28kB
+         Worker 1:  Sort Method: quicksort  Memory: 31kB
+         ->  Parallel Seq Scan on lecturas_sensor (actual rows=333 loops=3)
+               Rows Removed by Filter: 166333
+ Planning Time: 0.078 ms
+ Execution Time: 27.496 ms

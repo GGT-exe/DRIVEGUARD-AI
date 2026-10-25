@@ -1,0 +1,39 @@
+################ DESPUÉS del índice (recorrido_id, timestamp) ################
+=== Q1 (versión anterior): traer todas las lecturas del recorrido ===
+ Bitmap Heap Scan on lecturas_sensor (actual rows=1000 loops=1)
+   ->  Bitmap Index Scan on idx_lecturas_recorrido_ts (actual rows=1000 loops=1)
+         Index Cond: (recorrido_id = '7d529e0c-e79e-4168-ab79-1d6eba4c757f'::uuid)
+ Planning Time: 0.249 ms
+ Execution Time: 3.676 ms
+ Bitmap Heap Scan on lecturas_sensor (actual rows=1000 loops=1)
+   ->  Bitmap Index Scan on idx_lecturas_recorrido_ts (actual rows=1000 loops=1)
+         Index Cond: (recorrido_id = '7d529e0c-e79e-4168-ab79-1d6eba4c757f'::uuid)
+ Planning Time: 0.051 ms
+ Execution Time: 1.596 ms
+=== Q2 (versión nueva): COUNT total / excesos de velocidad / frenadas ===
+   ->  Bitmap Heap Scan on lecturas_sensor (actual rows=1000 loops=1)
+         ->  Bitmap Index Scan on idx_lecturas_recorrido_ts (actual rows=1000 loops=1)
+               Index Cond: (recorrido_id = '7d529e0c-e79e-4168-ab79-1d6eba4c757f'::uuid)
+ Planning Time: 0.091 ms
+ Execution Time: 1.796 ms
+   ->  Bitmap Heap Scan on lecturas_sensor (actual rows=298 loops=1)
+         Rows Removed by Filter: 702
+         ->  Bitmap Index Scan on idx_lecturas_recorrido_ts (actual rows=1000 loops=1)
+               Index Cond: (recorrido_id = '7d529e0c-e79e-4168-ab79-1d6eba4c757f'::uuid)
+ Planning Time: 0.110 ms
+ Execution Time: 1.300 ms
+   ->  Bitmap Heap Scan on lecturas_sensor (actual rows=242 loops=1)
+         Rows Removed by Filter: 758
+         ->  Bitmap Index Scan on idx_lecturas_recorrido_ts (actual rows=1000 loops=1)
+               Index Cond: (recorrido_id = '7d529e0c-e79e-4168-ab79-1d6eba4c757f'::uuid)
+ Planning Time: 0.062 ms
+ Execution Time: 1.788 ms
+=== Q3: puntos del recorrido ordenados por tiempo (GET /recorridos/:id/gps) ===
+ Sort (actual rows=1000 loops=1)
+   Sort Key: "timestamp"
+   Sort Method: quicksort  Memory: 64kB
+   ->  Bitmap Heap Scan on lecturas_sensor (actual rows=1000 loops=1)
+         ->  Bitmap Index Scan on idx_lecturas_recorrido_ts (actual rows=1000 loops=1)
+               Index Cond: (recorrido_id = '7d529e0c-e79e-4168-ab79-1d6eba4c757f'::uuid)
+ Planning Time: 0.091 ms
+ Execution Time: 2.031 ms

@@ -1,24 +1,42 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import heroImg from './assets/hero.png'
 import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
-import Camara from './Camara'
+import Camara from './camara' // el archivo se llama camara.jsx (en Linux importa la minúscula)
 import Mapa from './Mapa'
 import ComparacionSeguridad from './ComparacionSeguridad'
 import NotificacionesAlertas from './NotificacionesAlertas'
 import ErrorBoundary from './ErrorBoundary'
 import ConfiguracionUmbrales from './ConfiguracionUmbrales'
+import HistorialAuditoria from './HistorialAuditoria'
+import Login from './Login'
+import { cerrarSesion, esAdministrador, obtenerToken, obtenerUsuario } from './api'
 import './App.css'
 
 function App() {
   const [count, setCount] = useState(0)
+  const [usuario, setUsuario] = useState(() => (obtenerToken() ? obtenerUsuario() : null))
+
+  // Si el token vence (o se cierra la sesión), apiFetch avisa y se vuelve al login.
+  useEffect(() => {
+    const alCerrar = () => setUsuario(null)
+    window.addEventListener('sesion-cerrada', alCerrar)
+    return () => window.removeEventListener('sesion-cerrada', alCerrar)
+  }, [])
+
+  if (!usuario) return <Login onLogin={setUsuario} />
 
   return (
     <>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'flex-start', padding: '12px 16px', fontFamily: 'sans-serif', fontSize: 14 }}>
+        <span>Sesión: <strong>{usuario.nombre}</strong> ({usuario.rol})</span>
+        <button type="button" onClick={cerrarSesion}>Cerrar sesión</button>
+      </div>
       <ErrorBoundary><Camara /></ErrorBoundary>
       <ErrorBoundary><Mapa /></ErrorBoundary>
       <ErrorBoundary><ComparacionSeguridad /></ErrorBoundary>
       <ErrorBoundary><ConfiguracionUmbrales /></ErrorBoundary>
+      {esAdministrador(usuario) && <ErrorBoundary><HistorialAuditoria /></ErrorBoundary>}
       <NotificacionesAlertas />
       <section id="center">
         <div className="hero">

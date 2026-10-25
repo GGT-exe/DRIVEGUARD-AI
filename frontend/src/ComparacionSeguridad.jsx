@@ -12,8 +12,9 @@ import {
   LabelList
 } from 'recharts'
 
+import { apiFetch } from './api'
+
 // HU-16: Gráfico de comparación del nivel de seguridad entre conductores o vehículos
-const API_URL = 'https://driveguard-ai-1yop.onrender.com'
 
 // Mismos umbrales que US-10 en el backend
 const UMBRAL_NIVEL_BAJO = 50
@@ -61,7 +62,7 @@ function ComparacionSeguridad() {
       if (fechaInicio) params.append('fecha_inicio', fechaInicio)
       if (fechaFin) params.append('fecha_fin', fechaFin)
 
-      const respuesta = await fetch(`${API_URL}/comparacion/nivel-seguridad?${params.toString()}`)
+      const respuesta = await apiFetch(`/comparacion/nivel-seguridad?${params.toString()}`)
       const json = await respuesta.json()
 
       if (!respuesta.ok) {

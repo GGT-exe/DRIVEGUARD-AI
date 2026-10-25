@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { apiFetch } from './api';
 
 const RECORRIDO_ID = 'd982b26e-5a7f-4238-9b4e-2d0ec08e2257'; // por ahora fijo, luego se puede hacer dinámico
 
@@ -27,19 +28,16 @@ function Mapa() {
   const [incidentes, setIncidentes] = useState([]);
 
   useEffect(() => {
-    fetch(`https://driveguard-ai-1yop.onrender.com/recorridos/${RECORRIDO_ID}/gps`)
-      .then(res => res.json())
-      .then(data => setPuntos(data))
+    apiFetch(`/recorridos/${RECORRIDO_ID}/gps`)
+      .then(res => (res.ok ? res.json() : []))
+      .then(data => setPuntos(Array.isArray(data) ? data : []))
       .catch(err => console.error('Error cargando GPS:', err));
   }, []);
 
   useEffect(() => {
-    fetch(`https://driveguard-ai-1yop.onrender.com/recorridos/${RECORRIDO_ID}/incidentes-mapa`)
-      .then(res => res.json())
-      .then(data => {
-        console.log('Incidentes recibidos:', data.length, data);
-        setIncidentes(data);
-      })
+    apiFetch(`/recorridos/${RECORRIDO_ID}/incidentes-mapa`)
+      .then(res => (res.ok ? res.json() : []))
+      .then(data => setIncidentes(Array.isArray(data) ? data : []))
       .catch(err => console.error('Error cargando incidentes:', err));
   }, []);
 

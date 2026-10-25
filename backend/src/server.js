@@ -6,7 +6,7 @@ const { PrismaClient } = require('@prisma/client');
 const PDFDocument = require('pdfkit');       // HU-20: exportar reportes en PDF
 const ExcelJS = require('exceljs');          // HU-20: exportar reportes en Excel
 const cron = require('node-cron');           // HU-17: job periódico
-const { initSockets, emitirAlerta, SEVERIDAD } = require('./sockets'); // Historia 11
+const { initSockets, emitirAlerta, emitirNotificacion, SEVERIDAD } = require('./sockets'); // Historia 11 y 21
 const jwt = require('jsonwebtoken');          // Historia 18
 const { hashPassword, verificarPassword } = require('./auth');        // Historia 18
 const { verificarToken } = require('./middlewareAuth');               // Historia 18
@@ -14,7 +14,19 @@ const { verificarToken } = require('./middlewareAuth');               // Histori
 const app = express();
 const server = http.createServer(app); // reemplaza el uso directo de app.listen()
 const prisma = new PrismaClient();
+const { verificarRol } = require('./middlewareRol');
+const { registrarAuditoria, auditar } = require('./auditoria');
+const { iniciarMonitoreo, Sentry } = require('./monitoreo');
+const logger = require('./logger');
+const { manejarError } = require('./manejarError');
+const { evaluarRecorrido } = require('./notificaciones');             // Historia 21
+const { enviarCorreoNotificacion } = require('./correo');             // Historia 21
+const { crearRutasNotificaciones } = require('./rutasNotificaciones'); // Historia 21
+const { crearRutasAuditoria } = require('./rutasAuditoria');          // Historia 23
+const { calcularEstadoRecorrido, LIMITE_VELOCIDAD } = require('./nivelSeguridad'); // H27
+const { enteroAcotado } = require('./validaciones');                  // H27
 
+iniciarMonitoreo();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
@@ -37,14 +49,9 @@ app.get('/', (req, res) => {
 // HU-19: permisos por rol. verificarToken (middlewareAuth.js) ya deja
 // req.usuario = { id, correo, rol } disponible; esto solo revisa el rol.
 // ======================================================
-function requireRol(...rolesPermitidos) {
-  return (req, res, next) => {
-    if (!req.usuario || !rolesPermitidos.includes(req.usuario.rol)) {
-      return res.status(403).json({ error: 'No tienes permisos para esta acción' });
-    }
-    next();
-  };
-}
+// Usa el mismo verificador que H22 (middlewareRol.js), que trata "admin" y
+// "administrador" como el mismo rol.
+const requireRol = verificarRol;
 
 // ============================================================
 // Historia 18 — registro e inicio de sesión seguro al dashboard
@@ -62,6 +69,8 @@ app.post('/registro', async (req, res) => {
     const usuario = await prisma.usuarios.create({
       data: { nombre, correo, contrasena_hash: hash, rol: rol || 'supervisor', activo: true },
     });
+    // Historia 23 — el registro es público, así que se guarda el nuevo usuario como actor.
+    await registrarAuditoria(prisma, usuario.id, 'registro_usuario', `${usuario.correo} (${usuario.rol})`);
     res.status(201).json({ id: usuario.id, nombre: usuario.nombre, rol: usuario.rol });
   } catch (error) {
     console.error(error);
@@ -82,11 +91,13 @@ app.post('/login', async (req, res) => {
     // Mismo mensaje de error tanto si el correo no existe como si la
     // contraseña está mal — así no le damos pistas a quien intenta adivinar.
     if (!usuario || !usuario.activo) {
+      await registrarAuditoria(prisma, null, 'login_fallido', correo);
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
 
     const passwordValida = await verificarPassword(contrasena, usuario.contrasena_hash);
     if (!passwordValida) {
+      await registrarAuditoria(prisma, usuario.id, 'login_fallido', correo);
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
 
@@ -96,10 +107,65 @@ app.post('/login', async (req, res) => {
       { expiresIn: '8h' }
     );
 
+    // Historia 23 — quién inició sesión y cuándo.
+    await registrarAuditoria(prisma, usuario.id, 'login', usuario.correo);
+
     res.json({
       token,
       usuario: { id: usuario.id, nombre: usuario.nombre, correo: usuario.correo, rol: usuario.rol }
     });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Historia 21 — centro de notificaciones (listar, marcar como leída)
+app.use(crearRutasNotificaciones({ prisma, verificarToken }));
+
+// Historia 23 — historial de auditoría (GET /auditoria) y lista de usuarios para el filtro
+app.use(crearRutasAuditoria({ prisma, verificarToken, verificarRol }));
+
+// Lista los umbrales configurables para cualquier usuario autenticado.
+app.get('/configuracion', verificarToken, async (req, res) => {
+  try {
+    const umbrales = await prisma.configuraciones_umbral.findMany({
+      orderBy: { clave: 'asc' }
+    });
+    res.json(umbrales);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Solo el administrador puede actualizar un umbral.
+app.put('/configuracion/:clave', verificarToken, verificarRol('administrador'), async (req, res) => {
+  try {
+    const { clave } = req.params;
+    const { valor } = req.body;
+
+    if (valor === undefined || valor === null || isNaN(Number(valor))) {
+      return res.status(400).json({ error: "'valor' es obligatorio y debe ser numérico" });
+    }
+
+    const anterior = await prisma.configuraciones_umbral.findUnique({ where: { clave } });
+    if (!anterior) {
+      return res.status(404).json({ error: `No existe un umbral con la clave '${clave}'` });
+    }
+
+    const actualizado = await prisma.configuraciones_umbral.update({
+      where: { clave },
+      data: { valor: Number(valor), actualizado_por: req.usuario.id }
+    });
+
+    await registrarAuditoria(
+      prisma,
+      req.usuario.id,
+      'cambio_configuracion',
+      `${clave}: ${anterior.valor} -> ${actualizado.valor}`
+    );
+
+    res.json(actualizado);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message });
@@ -123,7 +189,15 @@ app.get('/conductores', verificarToken, async (req, res) => {
 
 app.get('/recorridos', verificarToken, async (req, res) => {
   try {
-    const recorridos = await prisma.recorridos.findMany();
+    // H27: antes devolvía TODOS los recorridos sin límite. Ahora se pagina
+    // (?limite=100&pagina=1, máximo 500) y se ordena del más reciente al más antiguo.
+    const limite = enteroAcotado(req.query.limite, 100, 1, 500);
+    const pagina = enteroAcotado(req.query.pagina, 1, 1, 1000000);
+    const recorridos = await prisma.recorridos.findMany({
+      orderBy: { fecha_inicio: 'desc' },
+      skip: (pagina - 1) * limite,
+      take: limite,
+    });
     res.json(recorridos);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -166,6 +240,9 @@ app.post('/lecturas', async (req, res) => {
 
     console.log('Lectura guardada:', nuevaLectura);
 
+    // Historia 21 — si esta lectura es un evento de riesgo, al final se evalúa el recorrido.
+    let huboEventoRiesgo = typeof velocidad === 'number' && velocidad > LIMITE_VELOCIDAD;
+
     if (aceleracion <= UMBRAL_FRENADA_BRUSCA) {
       const nivelRiesgo = aceleracion <= -5 ? 'alto' : 'medio';
       const tipo = 'frenada_brusca';
@@ -189,6 +266,7 @@ app.post('/lecturas', async (req, res) => {
         });
 
         console.log('⚠️  Incidente detectado y guardado:', nuevoIncidente);
+        huboEventoRiesgo = true;
 
         // Historia 11 — avisar al conductor en tiempo real por Socket.io.
         if (conductor_id) {
@@ -199,6 +277,15 @@ app.post('/lecturas', async (req, res) => {
           });
         }
       }
+    }
+
+    // Historia 21 — evaluar eventos críticos (nivel bajo / incidentes repetidos) y notificar
+    // al gerente por el dashboard y por correo. No bloquea la respuesta al sensor.
+    if (recorrido_id && huboEventoRiesgo) {
+      evaluarRecorrido(prisma, { recorrido_id, conductor_id }, {
+        emitir: emitirNotificacion,
+        enviarCorreo: (notificacion) => enviarCorreoNotificacion(prisma, notificacion),
+      }).catch((error) => manejarError(error, 'evaluarRecorrido', { recorrido_id }));
     }
 
     res.status(201).json(nuevaLectura);
@@ -213,10 +300,11 @@ app.get('/recorridos/:id/nivel-seguridad', verificarToken, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const lecturas = await prisma.lecturas_sensor.findMany({ where: { recorrido_id: id } });
-    const incidentes = await prisma.incidentes.findMany({ where: { recorrido_id: id } });
+    // H27: la base de datos cuenta (4 COUNT en paralelo, con índice) en vez de
+    // traer todas las lecturas a memoria. La respuesta es idéntica a la anterior.
+    const estado = await calcularEstadoRecorrido(prisma, id);
 
-    if (lecturas.length === 0) {
+    if (estado.total_lecturas === 0) {
       return res.json({
         recorrido_id: id,
         nivel_seguridad: null,
@@ -224,38 +312,24 @@ app.get('/recorridos/:id/nivel-seguridad', verificarToken, async (req, res) => {
       });
     }
 
-    const LIMITE_VELOCIDAD = 80;
-    const LIMITE_FRENADA_BRUSCA = -4;
-
-    let excesosVelocidad = 0;
-    let frenadasBruscas = 0;
-
-    lecturas.forEach(lectura => {
-      if (lectura.velocidad !== null && lectura.velocidad > LIMITE_VELOCIDAD) excesosVelocidad++;
-      if (lectura.aceleracion !== null && lectura.aceleracion < LIMITE_FRENADA_BRUSCA) frenadasBruscas++;
-    });
-
-    let nivelSeguridad = 100 - (excesosVelocidad * 5) - (frenadasBruscas * 10);
-    if (nivelSeguridad < 0) nivelSeguridad = 0;
-
     const UMBRAL_NIVEL_BAJO = 50;
     const UMBRAL_INCIDENTES = 3;
 
     const comportamientoAnormal =
-      nivelSeguridad < UMBRAL_NIVEL_BAJO || incidentes.length >= UMBRAL_INCIDENTES;
+      estado.nivel_seguridad < UMBRAL_NIVEL_BAJO || estado.total_incidentes >= UMBRAL_INCIDENTES;
 
     let clasificacion;
     if (comportamientoAnormal) clasificacion = 'anormal';
-    else if (incidentes.length > 0) clasificacion = 'riesgo_aislado';
+    else if (estado.total_incidentes > 0) clasificacion = 'riesgo_aislado';
     else clasificacion = 'normal';
 
     res.json({
       recorrido_id: id,
-      total_lecturas: lecturas.length,
-      excesos_velocidad: excesosVelocidad,
-      frenadas_bruscas: frenadasBruscas,
-      nivel_seguridad: nivelSeguridad,
-      total_incidentes: incidentes.length,
+      total_lecturas: estado.total_lecturas,
+      excesos_velocidad: estado.excesos_velocidad,
+      frenadas_bruscas: estado.frenadas_bruscas,
+      nivel_seguridad: estado.nivel_seguridad,
+      total_incidentes: estado.total_incidentes,
       comportamiento_anormal: comportamientoAnormal,
       clasificacion: clasificacion
     });
@@ -590,7 +664,9 @@ function formatearNivel(nivel) {
   return Math.round(nivel * 10) / 10;
 }
 
-app.get('/reportes/exportar', verificarToken, requireRol('admin', 'gerente'), async (req, res) => {
+app.get('/reportes/exportar', verificarToken, requireRol('admin', 'gerente'),
+  auditar(prisma, 'exportar_reporte', (req) => `formato=${req.query.formato || ''}${req.query.conductor_id ? ` conductor=${req.query.conductor_id}` : ''}`),
+  async (req, res) => {
   try {
     const formato = (req.query.formato || '').toLowerCase();
     const { conductor_id, fecha_inicio, fecha_fin } = req.query;
@@ -793,7 +869,9 @@ async function generarReportesSemanal() {
 cron.schedule('0 6 * * 1', generarReportesSemanal);
 
 // Forzar la generación manualmente (pruebas / admin)
-app.post('/reportes/generar-ahora', verificarToken, requireRol('admin'), async (req, res) => {
+app.post('/reportes/generar-ahora', verificarToken, requireRol('admin'),
+  auditar(prisma, 'generar_reportes', 'generación manual de reportes periódicos'),
+  async (req, res) => {
   try {
     await generarReportesSemanal();
     res.json({ mensaje: 'Reporte generado manualmente' });
@@ -822,7 +900,21 @@ app.get('/reportes/periodico', verificarToken, async (req, res) => {
   }
 });
 
+if (process.env.NODE_ENV === 'production') {
+  Sentry.setupExpressErrorHandler(app);
+}
+
+process.on('unhandledRejection', (error) => {
+  manejarError(error, 'unhandledRejection');
+});
+process.on('uncaughtException', (error) => {
+  manejarError(error, 'uncaughtException');
+});
+
 const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
 });
+
+// Se exporta para poder probar el servidor completo (npm test).
+module.exports = { app, server };

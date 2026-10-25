@@ -1,8 +1,18 @@
 import { useEffect, useState } from 'react'
+import { apiFetch } from './api'
 
 // US-22: pantalla de configuracion de umbrales y parametros de seguridad.
-// Contrato esperado del backend: GET/PUT /configuracion (solo administrador).
-const API_URL = import.meta.env.VITE_API_URL || 'https://driveguard-ai-1yop.onrender.com'
+// Backend: GET /configuracion devuelve una lista de { clave, valor } y
+// PUT /configuracion/:clave recibe { valor } (solo administrador). Esta pantalla
+// usa nombres cortos y el backend guarda las claves en mayúsculas; esta tabla
+// las une. nivel_seguridad_bajo e incidentes_repetidos son los umbrales de la
+// Historia 21 (notificaciones al gerente).
+const CLAVE_BACKEND = {
+  nivel_seguridad_bajo: 'NIVEL_SEGURIDAD_BAJO',
+  incidentes_repetidos: 'INCIDENTES_REPETIDOS',
+  frenada_brusca: 'UMBRAL_FRENADA_BRUSCA',
+  frenada_grave: 'UMBRAL_FRENADA_ALTO',
+}
 
 const DEFAULTS = {
   nivel_seguridad_bajo: 50,
@@ -80,16 +90,17 @@ function validar(valores) {
   return errores
 }
 
-function cabeceras() {
-  let token = null
-  try {
-    token = localStorage.getItem('token')
-  } catch {
-    token = null
-  }
-  const h = { 'Content-Type': 'application/json' }
-  if (token) h.Authorization = `Bearer ${token}`
-  return h
+// Convierte la lista { clave, valor } del backend en los nombres de esta pantalla.
+// Las claves que el servidor aún no tiene se omiten (queda el valor por defecto).
+function desdeBackend(lista) {
+  const porClave = Object.fromEntries(
+    (Array.isArray(lista) ? lista : []).map((fila) => [fila.clave, fila.valor])
+  )
+  const salida = {}
+  Object.entries(CLAVE_BACKEND).forEach(([campo, clave]) => {
+    if (porClave[clave] !== undefined && porClave[clave] !== null) salida[campo] = porClave[clave]
+  })
+  return salida
 }
 
 const COLOR_AVISO = {
@@ -109,11 +120,11 @@ function ConfiguracionUmbrales() {
     let activo = true
     async function cargar() {
       try {
-        const r = await fetch(`${API_URL}/configuracion`, { headers: cabeceras() })
+        const r = await apiFetch('/configuracion')
         if (!activo) return
         if (r.ok) {
           const d = await r.json()
-          setValores(textos({ ...DEFAULTS, ...d }))
+          setValores(textos({ ...DEFAULTS, ...desdeBackend(d) }))
         } else if (r.status === 401 || r.status === 403) {
           setAviso({ tipo: 'error', texto: 'No se pudo cargar: se necesita una sesión de administrador.' })
         } else {
@@ -152,30 +163,31 @@ function ConfiguracionUmbrales() {
       setAviso({ tipo: 'error', texto: 'Corrige los campos marcados antes de guardar.' })
       return
     }
-    const cuerpo = {}
-    CAMPOS.forEach((c) => {
-      cuerpo[c.clave] = aNumero(valores[c.clave])
-    })
     setGuardando(true)
     try {
-      const r = await fetch(`${API_URL}/configuracion`, {
-        method: 'PUT',
-        headers: cabeceras(),
-        body: JSON.stringify(cuerpo),
-      })
-      if (r.ok) {
-        const d = await r.json().catch(() => null)
-        if (d) setValores(textos({ ...DEFAULTS, ...d }))
+      // El backend actualiza un umbral por petición; se guardan uno a uno.
+      let fallo = null
+      for (const c of CAMPOS) {
+        const r = await apiFetch(`/configuracion/${CLAVE_BACKEND[c.clave]}`, {
+          method: 'PUT',
+          body: JSON.stringify({ valor: aNumero(valores[c.clave]) }),
+        })
+        if (!r.ok) {
+          fallo = { estado: r.status, cuerpo: await r.json().catch(() => null), campo: c.etiqueta }
+          break
+        }
+      }
+
+      if (!fallo) {
         setAviso({ tipo: 'ok', texto: 'Configuración guardada.' })
-      } else if (r.status === 400) {
-        const d = await r.json().catch(() => null)
-        setAviso({ tipo: 'error', texto: (d && d.error) || 'El servidor rechazó los valores.' })
-      } else if (r.status === 401 || r.status === 403) {
+      } else if (fallo.estado === 400) {
+        setAviso({ tipo: 'error', texto: (fallo.cuerpo && fallo.cuerpo.error) || 'El servidor rechazó los valores.' })
+      } else if (fallo.estado === 401 || fallo.estado === 403) {
         setAviso({ tipo: 'error', texto: 'No tienes permiso para guardar: se necesita ser administrador.' })
-      } else if (r.status === 404) {
-        setAviso({ tipo: 'info', texto: 'El servidor aún no tiene el endpoint de configuración (pendiente).' })
+      } else if (fallo.estado === 404) {
+        setAviso({ tipo: 'error', texto: `El servidor aún no tiene el umbral "${fallo.campo}": hay que ejecutar "node src/sembrar-umbrales.js" en el backend.` })
       } else {
-        setAviso({ tipo: 'error', texto: 'No se pudo guardar. Intenta de nuevo.' })
+        setAviso({ tipo: 'error', texto: `No se pudo guardar "${fallo.campo}". Intenta de nuevo.` })
       }
     } catch {
       setAviso({ tipo: 'error', texto: 'No se pudo conectar con el servidor.' })

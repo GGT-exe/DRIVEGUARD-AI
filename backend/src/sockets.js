@@ -92,4 +92,15 @@ function emitirAlerta(conductorId, alerta) {
   console.log(`[sockets] Alerta enviada a conductor ${conductorId} y a supervisores:`, alerta);
 }
 
-module.exports = { initSockets, emitirAlerta, SEVERIDAD };
+/**
+ * Historia 21 — avisa en tiempo real a los supervisores conectados de una
+ * notificación crítica (ya guardada en la base de datos). Si Socket.io aún
+ * no está inicializado simplemente no hace nada: la notificación igual
+ * queda guardada y se verá al abrir el centro de notificaciones.
+ */
+function emitirNotificacion(notificacion) {
+  if (!io) return;
+  io.to("supervisores").emit("notificacion", notificacion);
+}
+
+module.exports = { initSockets, emitirAlerta, emitirNotificacion, SEVERIDAD };
