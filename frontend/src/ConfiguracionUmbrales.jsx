@@ -2,64 +2,84 @@ import { useEffect, useState } from 'react'
 import { apiFetch } from './api'
 
 // US-22: pantalla de configuracion de umbrales y parametros de seguridad.
-// Backend: GET /configuracion devuelve una lista de { clave, valor } y
-// PUT /configuracion/:clave recibe { valor } (solo administrador). Esta pantalla
-// usa nombres cortos y el backend guarda las claves en mayúsculas; esta tabla
-// las une. nivel_seguridad_bajo e incidentes_repetidos son los umbrales de la
-// Historia 21 (notificaciones al gerente).
-const CLAVE_BACKEND = {
-  nivel_seguridad_bajo: 'NIVEL_SEGURIDAD_BAJO',
-  incidentes_repetidos: 'INCIDENTES_REPETIDOS',
-  frenada_brusca: 'UMBRAL_FRENADA_BRUSCA',
-  frenada_grave: 'UMBRAL_FRENADA_ALTO',
-}
+// Backend: GET /configuracion (lista de umbrales) y PUT /configuracion/:clave
+// (solo rol administrador) con el cuerpo { valor }. Las peticiones usan apiFetch
+// (api.js), que agrega el token de sesión.
 
-const DEFAULTS = {
-  nivel_seguridad_bajo: 50,
-  incidentes_repetidos: 3,
-  frenada_brusca: -3,
-  frenada_grave: -5,
-}
-
-const CAMPOS = [
-  {
-    clave: 'nivel_seguridad_bajo',
+// Reglas de validacion por umbral. El backend no valida rangos, por eso se hace aqui.
+const REGLAS = {
+  // Historia 21: umbrales que disparan notificaciones al gerente
+  NIVEL_SEGURIDAD_BAJO: {
     etiqueta: 'Nivel de seguridad bajo',
-    ayuda: 'Por debajo de este puntaje (0 a 100) se genera una alerta.',
+    ayuda: 'Por debajo de este puntaje (0 a 100) se notifica al gerente.',
     min: 0,
     max: 100,
     entero: true,
   },
-  {
-    clave: 'incidentes_repetidos',
+  INCIDENTES_REPETIDOS: {
     etiqueta: 'Incidentes repetidos',
-    ayuda: 'Cantidad de incidentes que dispara una notificación (1 a 50).',
+    ayuda: 'Cantidad de incidentes en un recorrido que dispara una notificación (1 a 50).',
     min: 1,
     max: 50,
     entero: true,
   },
-  {
-    clave: 'frenada_brusca',
+  MINUTOS_ENTRE_NOTIFICACIONES: {
+    etiqueta: 'Minutos entre notificaciones iguales',
+    ayuda: 'Evita repetir la misma notificación del mismo recorrido (1 a 1440).',
+    min: 1,
+    max: 1440,
+    entero: true,
+  },
+  UMBRAL_FRENADA_BRUSCA: {
     etiqueta: 'Frenada brusca (m/s²)',
-    ayuda: 'Aceleración desde la cual se registra una frenada brusca (-10 a -0.5).',
+    ayuda: 'Aceleración desde la cual se considera frenada brusca (-10 a -0.5).',
     min: -10,
     max: -0.5,
-    entero: false,
   },
-  {
-    clave: 'frenada_grave',
-    etiqueta: 'Frenada grave (m/s²)',
-    ayuda: 'Debe ser menor que la frenada brusca (-20 a -1).',
-    min: -20,
+  UMBRAL_FRENADA_MEDIO: {
+    etiqueta: 'Frenada de riesgo medio (m/s²)',
+    ayuda: 'Desde esta aceleración el riesgo pasa a medio (-15 a -1). Debe ser menor que la frenada brusca.',
+    min: -15,
     max: -1,
-    entero: false,
   },
+  UMBRAL_FRENADA_ALTO: {
+    etiqueta: 'Frenada de riesgo alto (m/s²)',
+    ayuda: 'Desde esta aceleración el riesgo pasa a alto (-20 a -2). Debe ser menor que la de riesgo medio.',
+    min: -20,
+    max: -2,
+  },
+  LIMITE_VELOCIDAD: {
+    etiqueta: 'Límite de velocidad (km/h)',
+    ayuda: 'Velocidad desde la cual se cuenta como exceso (10 a 200).',
+    min: 10,
+    max: 200,
+  },
+}
+
+const ORDEN = [
+  'UMBRAL_FRENADA_BRUSCA',
+  'UMBRAL_FRENADA_MEDIO',
+  'UMBRAL_FRENADA_ALTO',
+  'LIMITE_VELOCIDAD',
+  'NIVEL_SEGURIDAD_BAJO',
+  'INCIDENTES_REPETIDOS',
+  'MINUTOS_ENTRE_NOTIFICACIONES',
 ]
 
-function textos(obj) {
+const DEFAULTS = [
+  { clave: 'UMBRAL_FRENADA_BRUSCA', valor: -3 },
+  { clave: 'UMBRAL_FRENADA_MEDIO', valor: -4.5 },
+  { clave: 'UMBRAL_FRENADA_ALTO', valor: -6 },
+  { clave: 'LIMITE_VELOCIDAD', valor: 80 },
+  { clave: 'NIVEL_SEGURIDAD_BAJO', valor: 50 },
+  { clave: 'INCIDENTES_REPETIDOS', valor: 3 },
+  { clave: 'MINUTOS_ENTRE_NOTIFICACIONES', valor: 30 },
+]
+
+function textos(filas) {
   const salida = {}
-  CAMPOS.forEach((c) => {
-    salida[c.clave] = String(obj[c.clave])
+  filas.forEach((f) => {
+    salida[f.clave] = String(f.valor)
   })
   return salida
 }
@@ -70,37 +90,42 @@ function aNumero(texto) {
   return Number(t)
 }
 
-function validar(valores) {
+function ordenar(filas) {
+  return [...filas].sort((a, b) => {
+    const ia = ORDEN.indexOf(a.clave)
+    const ib = ORDEN.indexOf(b.clave)
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
+  })
+}
+
+function validar(filas, valores) {
   const errores = {}
-  CAMPOS.forEach((c) => {
-    const n = aNumero(valores[c.clave])
+  filas.forEach((f) => {
+    const n = aNumero(valores[f.clave])
+    const regla = REGLAS[f.clave]
     if (Number.isNaN(n)) {
-      errores[c.clave] = 'Ingresa un número válido.'
-    } else if (c.entero && !Number.isInteger(n)) {
-      errores[c.clave] = 'Debe ser un número entero.'
-    } else if (n < c.min || n > c.max) {
-      errores[c.clave] = `Debe estar entre ${c.min} y ${c.max}.`
+      errores[f.clave] = 'Ingresa un número válido.'
+    } else if (regla && regla.entero && !Number.isInteger(n)) {
+      errores[f.clave] = 'Debe ser un número entero.'
+    } else if (regla && (n < regla.min || n > regla.max)) {
+      errores[f.clave] = `Debe estar entre ${regla.min} y ${regla.max}.`
     }
   })
-  if (!errores.frenada_brusca && !errores.frenada_grave) {
-    if (aNumero(valores.frenada_grave) >= aNumero(valores.frenada_brusca)) {
-      errores.frenada_grave = 'Debe ser menor que la frenada brusca.'
+  const brusca = 'UMBRAL_FRENADA_BRUSCA'
+  const medio = 'UMBRAL_FRENADA_MEDIO'
+  const alto = 'UMBRAL_FRENADA_ALTO'
+  const hay = (c) => filas.some((f) => f.clave === c)
+  if (hay(brusca) && hay(medio) && !errores[brusca] && !errores[medio]) {
+    if (aNumero(valores[medio]) >= aNumero(valores[brusca])) {
+      errores[medio] = 'Debe ser menor que la frenada brusca.'
+    }
+  }
+  if (hay(medio) && hay(alto) && !errores[medio] && !errores[alto]) {
+    if (aNumero(valores[alto]) >= aNumero(valores[medio])) {
+      errores[alto] = 'Debe ser menor que la de riesgo medio.'
     }
   }
   return errores
-}
-
-// Convierte la lista { clave, valor } del backend en los nombres de esta pantalla.
-// Las claves que el servidor aún no tiene se omiten (queda el valor por defecto).
-function desdeBackend(lista) {
-  const porClave = Object.fromEntries(
-    (Array.isArray(lista) ? lista : []).map((fila) => [fila.clave, fila.valor])
-  )
-  const salida = {}
-  Object.entries(CLAVE_BACKEND).forEach(([campo, clave]) => {
-    if (porClave[clave] !== undefined && porClave[clave] !== null) salida[campo] = porClave[clave]
-  })
-  return salida
 }
 
 const COLOR_AVISO = {
@@ -110,6 +135,7 @@ const COLOR_AVISO = {
 }
 
 function ConfiguracionUmbrales() {
+  const [filas, setFilas] = useState(DEFAULTS)
   const [valores, setValores] = useState(textos(DEFAULTS))
   const [errores, setErrores] = useState({})
   const [aviso, setAviso] = useState(null)
@@ -124,11 +150,17 @@ function ConfiguracionUmbrales() {
         if (!activo) return
         if (r.ok) {
           const d = await r.json()
-          setValores(textos({ ...DEFAULTS, ...desdeBackend(d) }))
+          if (Array.isArray(d) && d.length > 0) {
+            const lista = ordenar(d.map((x) => ({ clave: x.clave, valor: x.valor, descripcion: x.descripcion })))
+            setFilas(lista)
+            setValores(textos(lista))
+          } else {
+            setAviso({ tipo: 'info', texto: 'El servidor no tiene umbrales cargados. Se muestran los valores por defecto.' })
+          }
         } else if (r.status === 401 || r.status === 403) {
-          setAviso({ tipo: 'error', texto: 'No se pudo cargar: se necesita una sesión de administrador.' })
+          setAviso({ tipo: 'error', texto: 'No se pudo cargar: inicia sesión para ver la configuración.' })
         } else {
-          setAviso({ tipo: 'info', texto: 'El servidor aún no ofrece la configuración. Se muestran los valores por defecto.' })
+          setAviso({ tipo: 'error', texto: 'No se pudo cargar la configuración del servidor.' })
         }
       } catch {
         if (activo) setAviso({ tipo: 'error', texto: 'No se pudo conectar con el servidor.' })
@@ -145,7 +177,7 @@ function ConfiguracionUmbrales() {
   const cambiar = (clave, valor) => {
     const siguiente = { ...valores, [clave]: valor }
     setValores(siguiente)
-    setErrores(validar(siguiente))
+    setErrores(validar(filas, siguiente))
     setAviso(null)
   }
 
@@ -157,39 +189,49 @@ function ConfiguracionUmbrales() {
 
   const guardar = async (e) => {
     e.preventDefault()
-    const err = validar(valores)
+    const err = validar(filas, valores)
     setErrores(err)
     if (Object.keys(err).length > 0) {
       setAviso({ tipo: 'error', texto: 'Corrige los campos marcados antes de guardar.' })
       return
     }
+    const cambiados = filas.filter((f) => aNumero(valores[f.clave]) !== Number(f.valor))
+    if (cambiados.length === 0) {
+      setAviso({ tipo: 'info', texto: 'No hay cambios para guardar.' })
+      return
+    }
     setGuardando(true)
+    let guardados = 0
+    let nuevas = [...filas]
     try {
-      // El backend actualiza un umbral por petición; se guardan uno a uno.
-      let fallo = null
-      for (const c of CAMPOS) {
-        const r = await apiFetch(`/configuracion/${CLAVE_BACKEND[c.clave]}`, {
+      for (const f of cambiados) {
+        const r = await apiFetch(`/configuracion/${encodeURIComponent(f.clave)}`, {
           method: 'PUT',
-          body: JSON.stringify({ valor: aNumero(valores[c.clave]) }),
+          body: JSON.stringify({ valor: aNumero(valores[f.clave]) }),
         })
-        if (!r.ok) {
-          fallo = { estado: r.status, cuerpo: await r.json().catch(() => null), campo: c.etiqueta }
-          break
+        if (r.ok) {
+          guardados += 1
+          nuevas = nuevas.map((x) => (x.clave === f.clave ? { ...x, valor: aNumero(valores[f.clave]) } : x))
+          continue
         }
+        let texto = 'No se pudo guardar. Intenta de nuevo.'
+        if (r.status === 401 || r.status === 403) {
+          texto = 'No tienes permiso para guardar: se necesita rol de administrador.'
+        } else if (r.status === 400 || r.status === 404) {
+          const d = await r.json().catch(() => null)
+          texto = (d && d.error) || 'El servidor rechazó el valor.'
+        }
+        setFilas(nuevas)
+        setAviso({
+          tipo: 'error',
+          texto: guardados > 0 ? `Se guardaron ${guardados} cambio(s), pero falló "${f.clave}": ${texto}` : texto,
+        })
+        return
       }
-
-      if (!fallo) {
-        setAviso({ tipo: 'ok', texto: 'Configuración guardada.' })
-      } else if (fallo.estado === 400) {
-        setAviso({ tipo: 'error', texto: (fallo.cuerpo && fallo.cuerpo.error) || 'El servidor rechazó los valores.' })
-      } else if (fallo.estado === 401 || fallo.estado === 403) {
-        setAviso({ tipo: 'error', texto: 'No tienes permiso para guardar: se necesita ser administrador.' })
-      } else if (fallo.estado === 404) {
-        setAviso({ tipo: 'error', texto: `El servidor aún no tiene el umbral "${fallo.campo}": hay que ejecutar "node src/sembrar-umbrales.js" en el backend.` })
-      } else {
-        setAviso({ tipo: 'error', texto: `No se pudo guardar "${fallo.campo}". Intenta de nuevo.` })
-      }
+      setFilas(nuevas)
+      setAviso({ tipo: 'ok', texto: `Configuración guardada (${guardados} cambio${guardados === 1 ? '' : 's'}).` })
     } catch {
+      setFilas(nuevas)
       setAviso({ tipo: 'error', texto: 'No se pudo conectar con el servidor.' })
     } finally {
       setGuardando(false)
@@ -211,40 +253,45 @@ function ConfiguracionUmbrales() {
     >
       <h2 style={{ marginTop: 0 }}>Configuración de umbrales</h2>
       <p style={{ color: '#6b7280', marginTop: 0 }}>
-        Define a partir de qué valores el sistema genera alertas y notificaciones.
+        Define a partir de qué valores el sistema clasifica el riesgo y cuenta excesos.
       </p>
 
       <form onSubmit={guardar} noValidate>
-        {CAMPOS.map((c) => (
-          <div key={c.clave} style={{ marginBottom: 14 }}>
-            <label htmlFor={c.clave} style={{ display: 'block', fontWeight: 600 }}>
-              {c.etiqueta}
-            </label>
-            <input
-              id={c.clave}
-              type="text"
-              inputMode="decimal"
-              value={valores[c.clave]}
-              onChange={(e) => cambiar(c.clave, e.target.value)}
-              aria-invalid={errores[c.clave] ? 'true' : 'false'}
-              aria-describedby={`${c.clave}-ayuda`}
-              disabled={cargando}
-              style={{
-                width: 140,
-                padding: '6px 8px',
-                marginTop: 4,
-                border: `1px solid ${errores[c.clave] ? '#dc2626' : '#9ca3af'}`,
-                borderRadius: 6,
-              }}
-            />
-            <div
-              id={`${c.clave}-ayuda`}
-              style={{ fontSize: 13, color: errores[c.clave] ? '#dc2626' : '#6b7280', marginTop: 2 }}
-            >
-              {errores[c.clave] || c.ayuda}
+        {filas.map((f) => {
+          const regla = REGLAS[f.clave]
+          const etiqueta = regla ? regla.etiqueta : f.clave
+          const ayuda = regla ? regla.ayuda : f.descripcion || ''
+          return (
+            <div key={f.clave} style={{ marginBottom: 14 }}>
+              <label htmlFor={f.clave} style={{ display: 'block', fontWeight: 600 }}>
+                {etiqueta}
+              </label>
+              <input
+                id={f.clave}
+                type="text"
+                inputMode="decimal"
+                value={valores[f.clave] ?? ''}
+                onChange={(e) => cambiar(f.clave, e.target.value)}
+                aria-invalid={errores[f.clave] ? 'true' : 'false'}
+                aria-describedby={`${f.clave}-ayuda`}
+                disabled={cargando}
+                style={{
+                  width: 140,
+                  padding: '6px 8px',
+                  marginTop: 4,
+                  border: `1px solid ${errores[f.clave] ? '#dc2626' : '#9ca3af'}`,
+                  borderRadius: 6,
+                }}
+              />
+              <div
+                id={`${f.clave}-ayuda`}
+                style={{ fontSize: 13, color: errores[f.clave] ? '#dc2626' : '#6b7280', marginTop: 2 }}
+              >
+                {errores[f.clave] || ayuda}
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
 
         {aviso && (
           <div
