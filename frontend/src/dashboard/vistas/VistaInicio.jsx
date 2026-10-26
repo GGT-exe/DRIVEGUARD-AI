@@ -75,7 +75,7 @@ export default function VistaInicio({ rango, onIrA }) {
             {enCurso === null ? '—' : enCurso}
             <span style={{ fontSize: 14, color: 'var(--muted)' }}>{d ? `/${d.recorridos.length}` : ''}</span>
           </div>
-          <div className="kpi-foot">entre los últimos {d ? d.recorridos.length : 100} recorridos</div>
+          <div className="kpi-foot">Estado actual, no cambia con el filtro · de los {d ? d.recorridos.length : 100} más recientes</div>
         </div>
         <div className="card">
           <p className="kpi-title">Incidentes del periodo</p>
