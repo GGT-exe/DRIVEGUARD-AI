@@ -18,7 +18,7 @@ class ErrorBoundary extends Component {
   render() {
     if (this.state.hayError) {
       return (
-        <div role="alert" style={{ padding: 12, margin: 8, border: '1px solid #fca5a5', background: '#fef2f2', color: '#991b1b', borderRadius: 6 }}>
+        <div role="alert" className="errorbox">
           Este panel no pudo cargarse. Revisa la sesión o la conexión con el servidor.
         </div>
       )

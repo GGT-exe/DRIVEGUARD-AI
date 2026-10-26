@@ -93,13 +93,20 @@ function HistorialAuditoria() {
   }
 
   return (
-    <section style={estilos.seccion} aria-label="Historial de auditoría">
-      <h2>Historial de auditoría</h2>
+    <section className="panel" aria-label="Historial de auditoría">
+      <div className="panel-head">
+        <h2>Historial de auditoría</h2>
+        {datos && datos.resultados.length > 0 && (
+          <span className="panel-note">
+            {datos.total} registro{datos.total === 1 ? '' : 's'} · página {datos.pagina} de {datos.total_paginas}
+          </span>
+        )}
+      </div>
 
-      <form onSubmit={buscar} style={estilos.filtros}>
-        <label style={estilos.etiqueta}>
+      <form onSubmit={buscar} className="filters pad" style={{ marginBottom: 0 }}>
+        <label className="field">
           Usuario
-          <select value={formulario.usuario_id} onChange={cambiar('usuario_id')} style={estilos.campo}>
+          <select className="select" value={formulario.usuario_id} onChange={cambiar('usuario_id')}>
             <option value="">Todos</option>
             {usuarios.map((u) => (
               <option key={u.id} value={u.id}>{u.nombre} ({u.correo})</option>
@@ -107,9 +114,9 @@ function HistorialAuditoria() {
           </select>
         </label>
 
-        <label style={estilos.etiqueta}>
+        <label className="field">
           Acción
-          <select value={formulario.accion} onChange={cambiar('accion')} style={estilos.campo}>
+          <select className="select" value={formulario.accion} onChange={cambiar('accion')}>
             <option value="">Todas</option>
             {ACCIONES.map((a) => (
               <option key={a.valor} value={a.valor}>{a.texto}</option>
@@ -117,64 +124,58 @@ function HistorialAuditoria() {
           </select>
         </label>
 
-        <label style={estilos.etiqueta}>
+        <label className="field">
           Desde
-          <input type="date" value={formulario.desde} onChange={cambiar('desde')} style={estilos.campo} />
+          <input className="input" type="date" value={formulario.desde} onChange={cambiar('desde')} />
         </label>
 
-        <label style={estilos.etiqueta}>
+        <label className="field">
           Hasta
-          <input type="date" value={formulario.hasta} onChange={cambiar('hasta')} style={estilos.campo} />
+          <input className="input" type="date" value={formulario.hasta} onChange={cambiar('hasta')} />
         </label>
 
-        <div style={estilos.botones}>
-          <button type="submit" disabled={cargando}>Buscar</button>
-          <button type="button" onClick={limpiar} disabled={cargando}>Limpiar filtros</button>
-        </div>
+        <button type="submit" className="btn" disabled={cargando}>Buscar</button>
+        <button type="button" className="btn secondary" onClick={limpiar} disabled={cargando}>Limpiar filtros</button>
       </form>
 
-      {error && <p role="alert" style={estilos.error}>{error}</p>}
-      {cargando && !error && <p>Cargando historial…</p>}
+      {error && <p role="alert" className="errorbox">{error}</p>}
+      {cargando && !error && <div className="empty">Cargando historial…</div>}
 
       {!cargando && !error && datos && datos.resultados.length === 0 && (
-        <p>No hay registros para los filtros elegidos.</p>
+        <div className="empty">No hay registros para los filtros elegidos.</div>
       )}
 
       {datos && datos.resultados.length > 0 && (
         <>
-          <p style={estilos.resumen}>
-            {datos.total} registro{datos.total === 1 ? '' : 's'} · página {datos.pagina} de {datos.total_paginas}
-          </p>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={estilos.tabla}>
+          <div className="tablewrap">
+            <table>
               <thead>
                 <tr>
-                  <th style={estilos.th}>Fecha</th>
-                  <th style={estilos.th}>Usuario</th>
-                  <th style={estilos.th}>Acción</th>
-                  <th style={estilos.th}>Detalle</th>
+                  <th>Fecha</th>
+                  <th>Usuario</th>
+                  <th>Acción</th>
+                  <th>Detalle</th>
                 </tr>
               </thead>
               <tbody>
                 {datos.resultados.map((fila) => (
-                  <tr key={fila.id}>
-                    <td style={estilos.td}>{fila.fecha ? new Date(fila.fecha).toLocaleString('es-CO') : '—'}</td>
-                    <td style={estilos.td}>
-                      {fila.usuario ? `${fila.usuario.nombre} (${fila.usuario.correo})` : 'Sin usuario identificado'}
-                    </td>
-                    <td style={estilos.td}>{TEXTO_ACCION[fila.accion] || fila.accion}</td>
-                    <td style={estilos.td}>{fila.detalle || '—'}</td>
+                  <tr className="tdata" key={fila.id}>
+                    <td className="mono">{fila.fecha ? new Date(fila.fecha).toLocaleString('es-CO') : '—'}</td>
+                    <td>{fila.usuario ? `${fila.usuario.nombre} (${fila.usuario.correo})` : 'Sin usuario identificado'}</td>
+                    <td>{TEXTO_ACCION[fila.accion] || fila.accion}</td>
+                    <td>{fila.detalle || '—'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
 
-          <div style={estilos.paginacion}>
-            <button type="button" onClick={() => irAPagina(pagina - 1)} disabled={cargando || pagina <= 1}>
+          <div className="pager">
+            <span className="info">{datos.total} registro{datos.total === 1 ? '' : 's'} · página {datos.pagina} de {datos.total_paginas}</span>
+            <button type="button" className="btn small secondary" onClick={() => irAPagina(pagina - 1)} disabled={cargando || pagina <= 1}>
               Anterior
             </button>
-            <button type="button" onClick={() => irAPagina(pagina + 1)} disabled={cargando || pagina >= datos.total_paginas}>
+            <button type="button" className="btn small secondary" onClick={() => irAPagina(pagina + 1)} disabled={cargando || pagina >= datos.total_paginas}>
               Siguiente
             </button>
           </div>
@@ -182,20 +183,6 @@ function HistorialAuditoria() {
       )}
     </section>
   )
-}
-
-const estilos = {
-  seccion: { margin: '24px auto', maxWidth: 1000, padding: 16, textAlign: 'left' },
-  filtros: { display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end', marginBottom: 12 },
-  etiqueta: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, fontWeight: 600 },
-  campo: { padding: '6px 8px', fontSize: 14 },
-  botones: { display: 'flex', gap: 8 },
-  error: { padding: '8px 10px', borderRadius: 6, background: '#fef2f2', color: '#991b1b' },
-  resumen: { fontSize: 13, color: '#6b7280' },
-  tabla: { width: '100%', borderCollapse: 'collapse', fontSize: 14 },
-  th: { textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #d1d5db', whiteSpace: 'nowrap' },
-  td: { padding: '8px 10px', borderBottom: '1px solid #e5e7eb', verticalAlign: 'top' },
-  paginacion: { display: 'flex', gap: 8, marginTop: 12 },
 }
 
 export default HistorialAuditoria

@@ -128,11 +128,7 @@ function validar(filas, valores) {
   return errores
 }
 
-const COLOR_AVISO = {
-  error: { fondo: '#fef2f2', borde: '#fca5a5', texto: '#991b1b' },
-  info: { fondo: '#eff6ff', borde: '#93c5fd', texto: '#1e3a8a' },
-  ok: { fondo: '#f0fdf4', borde: '#86efac', texto: '#166534' },
-}
+const CLASE_AVISO = { error: 'errorbox', info: 'infobox', ok: 'okbox' }
 
 function ConfiguracionUmbrales() {
   const [filas, setFilas] = useState(DEFAULTS)
@@ -241,79 +237,49 @@ function ConfiguracionUmbrales() {
   const hayErrores = Object.keys(errores).length > 0
 
   return (
-    <section
-      style={{
-        maxWidth: 620,
-        margin: '24px auto',
-        padding: 24,
-        border: '1px solid #e5e7eb',
-        borderRadius: 12,
-        textAlign: 'left',
-      }}
-    >
-      <h2 style={{ marginTop: 0 }}>Configuración de umbrales</h2>
-      <p style={{ color: '#6b7280', marginTop: 0 }}>
-        Define a partir de qué valores el sistema clasifica el riesgo y cuenta excesos.
-      </p>
+    <section className="panel" aria-label="Configuración de umbrales">
+      <div className="panel-head">
+        <h2>Configuración de umbrales</h2>
+        <span className="panel-note">Define a partir de qué valores el sistema clasifica el riesgo y notifica.</span>
+      </div>
 
       <form onSubmit={guardar} noValidate>
-        {filas.map((f) => {
-          const regla = REGLAS[f.clave]
-          const etiqueta = regla ? regla.etiqueta : f.clave
-          const ayuda = regla ? regla.ayuda : f.descripcion || ''
-          return (
-            <div key={f.clave} style={{ marginBottom: 14 }}>
-              <label htmlFor={f.clave} style={{ display: 'block', fontWeight: 600 }}>
-                {etiqueta}
-              </label>
-              <input
-                id={f.clave}
-                type="text"
-                inputMode="decimal"
-                value={valores[f.clave] ?? ''}
-                onChange={(e) => cambiar(f.clave, e.target.value)}
-                aria-invalid={errores[f.clave] ? 'true' : 'false'}
-                aria-describedby={`${f.clave}-ayuda`}
-                disabled={cargando}
-                style={{
-                  width: 140,
-                  padding: '6px 8px',
-                  marginTop: 4,
-                  border: `1px solid ${errores[f.clave] ? '#dc2626' : '#9ca3af'}`,
-                  borderRadius: 6,
-                }}
-              />
-              <div
-                id={`${f.clave}-ayuda`}
-                style={{ fontSize: 13, color: errores[f.clave] ? '#dc2626' : '#6b7280', marginTop: 2 }}
-              >
-                {errores[f.clave] || ayuda}
+        <div className="thr-list">
+          {filas.map((f) => {
+            const regla = REGLAS[f.clave]
+            const etiqueta = regla ? regla.etiqueta : f.clave
+            const ayuda = regla ? regla.ayuda : f.descripcion || ''
+            return (
+              <div key={f.clave} className="thr-item">
+                <label htmlFor={f.clave}>{etiqueta}</label>
+                <input
+                  id={f.clave}
+                  className={`input ${errores[f.clave] ? 'bad' : ''}`}
+                  type="text"
+                  inputMode="decimal"
+                  value={valores[f.clave] ?? ''}
+                  onChange={(e) => cambiar(f.clave, e.target.value)}
+                  aria-invalid={errores[f.clave] ? 'true' : 'false'}
+                  aria-describedby={`${f.clave}-ayuda`}
+                  disabled={cargando}
+                />
+                <div id={`${f.clave}-ayuda`} className={errores[f.clave] ? 'field-error' : 'field-hint'} style={{ marginTop: 4 }}>
+                  {errores[f.clave] || ayuda}
+                </div>
               </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
 
         {aviso && (
-          <div
-            role="status"
-            style={{
-              margin: '12px 0',
-              padding: '8px 12px',
-              borderRadius: 6,
-              border: `1px solid ${COLOR_AVISO[aviso.tipo].borde}`,
-              background: COLOR_AVISO[aviso.tipo].fondo,
-              color: COLOR_AVISO[aviso.tipo].texto,
-            }}
-          >
-            {aviso.texto}
-          </div>
+          <div role="status" className={CLASE_AVISO[aviso.tipo]}>{aviso.texto}</div>
         )}
 
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button type="submit" disabled={guardando || cargando || hayErrores}>
+        <div className="thr-foot">
+          <button type="submit" className="btn" disabled={guardando || cargando || hayErrores}>
             {guardando ? 'Guardando...' : 'Guardar cambios'}
           </button>
-          <button type="button" onClick={restablecer} disabled={guardando}>
+          <button type="button" className="btn secondary" onClick={restablecer} disabled={guardando}>
             Restablecer valores por defecto
           </button>
         </div>

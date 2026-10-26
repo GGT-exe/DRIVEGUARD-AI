@@ -7,13 +7,30 @@
 2. Si los datos son incorrectos verás “Correo o contraseña incorrectos”. Si el servidor está dormido (plan gratuito) la primera vez puede tardar hasta un minuto.
 3. Arriba a la izquierda aparece tu nombre y rol. **Cerrar sesión** te devuelve al login. La sesión vence a las 8 horas y la app te lleva sola al login.
 
-### Qué ve cada rol
-| Pantalla | Conductor/Supervisor | Gerente | Administrador |
+### Pestañas según el rol
+El menú de la izquierda muestra solo lo que tu rol puede usar. Si escribes en la dirección una pestaña que no te corresponde (por ejemplo `#auditoria`), te lleva al Inicio.
+
+| Pestaña | Supervisor | Gerente | Administrador |
 |---|---|---|---|
-| Mapa de recorrido, comparación de seguridad, notificaciones | Sí | Sí | Sí |
-| Configuración de umbrales (lectura) | Sí | Sí | Sí |
-| Guardar umbrales | No | No | Sí |
-| Historial de auditoría | No | No | Sí |
+| Inicio (resumen en vivo) | Sí | Sí | Sí |
+| Cámara (monitoreo y registro de incidentes) | Sí | Sí | Sí |
+| Mapa de incidentes | Sí | Sí | Sí |
+| Alertas y notificaciones | Sí | Sí | Sí |
+| Historial de incidentes | Sí | Sí | Sí |
+| Comparativo de seguridad | No | Sí | Sí |
+| Reportes (exportar PDF / Excel) | No | Sí | Sí (y "Generar ahora") |
+| Umbrales | No | No | Sí |
+| Auditoría | No | No | Sí |
+| Usuarios y permisos | No | No | Sí |
+
+### Cámara
+1. Permite el acceso a la cámara cuando el navegador lo pida. Si lo negaste, la pantalla lo explica y cómo corregirlo.
+2. Elige el **recorrido** al que pertenece el evento. Con recorrido, el incidente queda ligado a él (aparece en el mapa), se avisa en tiempo real a los supervisores y se evalúan las notificaciones críticas. Sin recorrido solo se guarda.
+3. Elige el tipo de evento y el nivel de riesgo, y pulsa **Registrar incidente y alertar**. Si no capturaste una imagen, se toma una del fotograma actual.
+4. Esta pantalla **no detecta accidentes por sí sola**: la persona que monitorea los registra.
+
+### Mapa de incidentes
+Muestra la ruta de los 10 recorridos más recientes (azul), la posición de los que siguen en curso y cada incidente como un punto por riesgo (verde leve, naranja moderado, rojo grave). Filtra por recorrido y por riesgo; debajo hay la lista con las coordenadas. Un incidente sin puntos GPS no se puede ubicar y se avisa cuántos son.
 
 ### Campana de notificaciones (arriba a la derecha)
 - El número rojo son las **no leídas**. Pulsa la campana para abrir la lista.
@@ -50,6 +67,7 @@ Base: `https://driveguard-ai-1yop.onrender.com`. Autenticación: cabecera `Autho
 | `GET /conductores`, `GET /vehiculos/tipos` | sesión | Catálogos |
 | `GET /recorridos?pagina&limite` | sesión | Recorridos paginados |
 | `POST /lecturas` | dispositivo | Registra lectura; puede crear incidente y notificaciones |
+| `POST /incidentes` `{imagen, tipo, nivel_riesgo, recorrido_id?}` | cámara | Crea el incidente; con `recorrido_id` lo liga al recorrido, avisa por Socket.io y evalúa notificaciones |
 | `POST /gps`, `GET /recorridos/:id/gps` | dispositivo / sesión | Puntos GPS |
 | `GET /recorridos/:id/nivel-seguridad` | sesión | `{total_lecturas, excesos_velocidad, frenadas_bruscas, total_incidentes, nivel_seguridad}` |
 | `GET /recorridos/:id/incidentes-mapa` | sesión | Incidentes con coordenadas |

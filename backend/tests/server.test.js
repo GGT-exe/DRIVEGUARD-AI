@@ -194,3 +194,29 @@ test('exportar: valida formato (400 no se audita) y exige rol admin/gerente', as
   assert.equal(nuevas.length, antes + 1);
   assert.match(nuevas.at(-1).detalle, /formato=excel/);
 });
+
+test('POST /incidentes (cámara): sin recorrido se guarda; con recorrido queda ligado; UUID inválido da 400', async () => {
+  const REC_CAM = 'd4444444-4444-4444-8444-444444444444';
+  fake.tablas.recorridos.push({ id: REC_CAM, conductor_id: COND, fecha_inicio: new Date(), conductores: { nombre: 'Carlos Pérez' } });
+
+  const sin = await pedir(url, '/incidentes', { metodo: 'POST', cuerpo: { imagen: 'data:image/png;base64,AAA', tipo: 'accidente', nivel_riesgo: 'alto' } });
+  assert.equal(sin.status, 200);
+  assert.equal(sin.json.tipo, 'accidente');
+  assert.equal(sin.json.recorrido_id, null);
+
+  const con = await pedir(url, '/incidentes', { metodo: 'POST', cuerpo: { imagen: 'data:image/png;base64,AAA', tipo: 'accidente', nivel_riesgo: 'alto', recorrido_id: REC_CAM } });
+  assert.equal(con.status, 200);
+  assert.equal(con.json.recorrido_id, REC_CAM);
+  await esperar(40);
+  assert.equal(fake.tablas.incidentes.filter((i) => i.recorrido_id === REC_CAM).length, 1);
+
+  const mala = await pedir(url, '/incidentes', { metodo: 'POST', cuerpo: { tipo: 'accidente', recorrido_id: 'no-es-uuid' } });
+  assert.equal(mala.status, 400);
+});
+
+test('GET /incidentes/historial valida conductor_id y fechas antes de consultar (400)', async () => {
+  const sara = (await login('sara@test.co', 'Clave123!')).json.token;
+  assert.equal((await pedir(url, '/incidentes/historial?conductor_id=no-es-uuid', { token: sara })).status, 400);
+  assert.equal((await pedir(url, '/incidentes/historial?fecha_inicio=ayer', { token: sara })).status, 400);
+  assert.equal((await pedir(url, '/incidentes/historial?fecha_fin=31-31-2026', { token: sara })).status, 400);
+});

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { API_URL, guardarSesion } from './api'
+import './dashboard/dashboard.css'
 
 // Historia 18 — pantalla de inicio de sesión del dashboard.
 // Sin ella el navegador no tiene token y todas las rutas protegidas responden 401.
@@ -45,52 +46,45 @@ function Login({ onLogin }) {
   }
 
   return (
-    <main style={estilos.pagina}>
-      <form onSubmit={enviar} style={estilos.tarjeta} aria-label="Inicio de sesión">
-        <h1 style={estilos.titulo}>DriveGuard AI</h1>
-        <p style={estilos.subtitulo}>Inicia sesión para ver el dashboard</p>
+    <main className="login-page">
+      <form onSubmit={enviar} className="login-card" aria-label="Inicio de sesión">
+        <div className="brand">
+          <div className="brand-mark" />
+          <div><b>DriveGuard-AI</b><span>Seguridad vial de flota</span></div>
+        </div>
+        <h1>Iniciar sesión</h1>
+        <p className="lead">Accede al panel de monitoreo de la flota.</p>
 
-        <label style={estilos.etiqueta} htmlFor="login-correo">Correo</label>
+        <label htmlFor="login-correo">Correo</label>
         <input
           id="login-correo"
+          className="input wide"
           type="email"
           autoComplete="username"
           required
           value={correo}
           onChange={(e) => setCorreo(e.target.value)}
-          style={estilos.campo}
         />
 
-        <label style={estilos.etiqueta} htmlFor="login-contrasena">Contraseña</label>
+        <label htmlFor="login-contrasena">Contraseña</label>
         <input
           id="login-contrasena"
+          className="input wide"
           type="password"
           autoComplete="current-password"
           required
           value={contrasena}
           onChange={(e) => setContrasena(e.target.value)}
-          style={estilos.campo}
         />
 
-        {error && <p role="alert" style={estilos.error}>{error}</p>}
+        {error && <p role="alert" className="errorbox" style={{ margin: '12px 0 0' }}>{error}</p>}
 
-        <button type="submit" disabled={enviando} style={estilos.boton}>
+        <button type="submit" className="btn" disabled={enviando}>
           {enviando ? 'Ingresando…' : 'Ingresar'}
         </button>
       </form>
     </main>
   )
-}
-
-const estilos = {
-  pagina: { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, fontFamily: 'sans-serif' },
-  tarjeta: { width: '100%', maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 6, padding: 24, borderRadius: 12, border: '1px solid #d1d5db', background: '#fff', color: '#111827', textAlign: 'left' },
-  titulo: { margin: 0, fontSize: 24 },
-  subtitulo: { margin: '0 0 12px', color: '#6b7280', fontSize: 14 },
-  etiqueta: { fontSize: 13, fontWeight: 600, marginTop: 8 },
-  campo: { padding: '9px 10px', borderRadius: 6, border: '1px solid #9ca3af', fontSize: 15 },
-  error: { margin: '8px 0 0', padding: '8px 10px', borderRadius: 6, background: '#fef2f2', color: '#991b1b', fontSize: 13 },
-  boton: { marginTop: 14, padding: '10px 12px', borderRadius: 6, border: 'none', background: '#1f2937', color: '#fff', fontSize: 15, cursor: 'pointer' },
 }
 
 export default Login

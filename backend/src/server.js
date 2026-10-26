@@ -24,7 +24,7 @@ const { enviarCorreoNotificacion } = require('./correo');             // Histori
 const { crearRutasNotificaciones } = require('./rutasNotificaciones'); // Historia 21
 const { crearRutasAuditoria } = require('./rutasAuditoria');          // Historia 23
 const { calcularEstadoRecorrido, LIMITE_VELOCIDAD } = require('./nivelSeguridad'); // H27
-const { enteroAcotado } = require('./validaciones');                  // H27
+const { enteroAcotado, esUuid } = require('./validaciones');                  // H27
 
 iniciarMonitoreo();
 app.use(cors());
@@ -204,18 +204,51 @@ app.get('/recorridos', verificarToken, async (req, res) => {
   }
 });
 
-// Endpoint para crear un incidente con la imagen capturada
+// Endpoint para crear un incidente con la imagen capturada (cámara del dashboard).
+// Si trae recorrido_id, el incidente queda ligado al recorrido (así aparece en el
+// mapa y cuenta para el nivel de seguridad) y se avisa en tiempo real a los
+// supervisores y se evalúan los eventos críticos de la Historia 21.
 app.post('/incidentes', async (req, res) => {
   try {
-    const { imagen, tipo, nivel_riesgo } = req.body;
+    const { imagen, tipo, nivel_riesgo, recorrido_id } = req.body;
+
+    if (recorrido_id && !esUuid(recorrido_id)) {
+      return res.status(400).json({ error: 'recorrido_id no es un UUID válido' });
+    }
 
     const nuevoIncidente = await prisma.incidentes.create({
       data: {
         imagen_url: imagen,
         tipo: tipo || 'deteccion_camara',
-        nivel_riesgo: nivel_riesgo || 'medio'
+        nivel_riesgo: nivel_riesgo || 'medio',
+        ...(recorrido_id ? { recorrido_id } : {})
       }
     });
+
+    if (recorrido_id) {
+      const recorrido = await prisma.recorridos.findUnique({
+        where: { id: recorrido_id },
+        select: { conductor_id: true }
+      });
+      const conductor_id = recorrido && recorrido.conductor_id;
+      if (conductor_id) {
+        const severidad = nuevoIncidente.nivel_riesgo === 'alto' ? SEVERIDAD.GRAVE
+          : nuevoIncidente.nivel_riesgo === 'bajo' ? SEVERIDAD.LEVE : SEVERIDAD.MODERADA;
+        try {
+          emitirAlerta(conductor_id, {
+            tipo: nuevoIncidente.tipo,
+            severidad,
+            mensaje: `Incidente registrado por cámara: ${nuevoIncidente.tipo}`,
+          });
+        } catch (error) {
+          manejarError(error, 'emitirAlerta /incidentes', { recorrido_id });
+        }
+      }
+      evaluarRecorrido(prisma, { recorrido_id, conductor_id }, {
+        emitir: emitirNotificacion,
+        enviarCorreo: (notificacion) => enviarCorreoNotificacion(prisma, notificacion),
+      }).catch((error) => manejarError(error, 'evaluarRecorrido', { recorrido_id }));
+    }
 
     res.json(nuevoIncidente);
   } catch (error) {
@@ -401,9 +434,20 @@ app.get('/incidentes/historial', verificarToken, async (req, res) => {
       LEFT JOIN vehiculos v ON r.vehiculo_id = v.id
     `;
 
-    if (conductor_id) { condiciones.push(`c.id = $${idx++}`); valores.push(conductor_id); }
-    if (fecha_inicio) { condiciones.push(`i.fecha >= $${idx++}`); valores.push(fecha_inicio); }
-    if (fecha_fin) { condiciones.push(`i.fecha <= $${idx++}`); valores.push(fecha_fin); }
+    // Prisma envía los parámetros como texto: PostgreSQL necesita la conversión
+    // explícita a uuid / timestamp o responde "operator does not exist".
+    if (conductor_id) {
+      if (!esUuid(conductor_id)) return res.status(400).json({ error: 'conductor_id no es un UUID válido' });
+      condiciones.push(`c.id = $${idx++}::uuid`); valores.push(conductor_id);
+    }
+    if (fecha_inicio) {
+      if (isNaN(new Date(fecha_inicio).getTime())) return res.status(400).json({ error: 'fecha_inicio no es válida. Usa el formato AAAA-MM-DD' });
+      condiciones.push(`i.fecha >= $${idx++}::timestamp`); valores.push(fecha_inicio);
+    }
+    if (fecha_fin) {
+      if (isNaN(new Date(fecha_fin).getTime())) return res.status(400).json({ error: 'fecha_fin no es válida. Usa el formato AAAA-MM-DD' });
+      condiciones.push(`i.fecha <= $${idx++}::timestamp`); valores.push(fecha_fin);
+    }
     if (tipo_vehiculo) { condiciones.push(`v.tipo = $${idx++}`); valores.push(tipo_vehiculo); }
     if (placa) { condiciones.push(`v.placa = $${idx++}`); valores.push(placa); }
 
