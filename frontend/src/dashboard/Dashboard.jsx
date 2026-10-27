@@ -5,6 +5,7 @@ import ConfiguracionUmbrales from '../ConfiguracionUmbrales'
 import HistorialAuditoria from '../HistorialAuditoria'
 import './dashboard.css'
 import Icono from './iconos'
+import { Eslogan, Imagotipo, Isotipo } from '../marca/Marca'
 import ListaAlertas from './ListaAlertas'
 import ProveedorNotificaciones from './ProveedorNotificaciones'
 import { useNotificaciones } from './contextoNotificaciones'
@@ -81,8 +82,9 @@ function Contenido({ usuario }) {
     <div className="app">
       <aside className="side">
         <div className="brand">
-          <div className="brand-mark" />
-          <div><b>DriveGuard-AI</b><span>Norte de Santander, CO</span></div>
+          <Imagotipo alto={30} className="brand-full" />
+          <Isotipo alto={32} className="brand-iso" titulo="DriveGuard-AI" />
+          <Eslogan className="brand-slogan" />
         </div>
 
         <nav className="nav" aria-label="Secciones">

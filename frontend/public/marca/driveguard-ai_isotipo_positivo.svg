@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="30 18 607 696" height="512"  role="img" aria-label="Isotipo DriveGuard-AI"><clipPath id="c7"><path d="M333 40 L52 128 L52 370 C52 520 170 620 333 692 C496 620 615 520 615 370 L615 128 Z"/></clipPath>
+<path d="M292 197 L374 197 L502 601 L165 601 Z" fill="#12151A" clip-path="url(#c7)"/>
+<path d="M333 40 L52 128 L52 370 C52 520 170 620 333 692 C496 620 615 520 615 370 L615 128 Z" fill="none" stroke="#12151A" stroke-width="32" stroke-linejoin="round"/>
+<rect x="322" y="299" width="22" height="65" rx="11.0" fill="#F4C542"/>
+<rect x="319" y="398" width="28" height="93" rx="14.0" fill="#F4C542"/>
+<rect x="316" y="517" width="34" height="90" rx="17.0" fill="#F4C542"/>
+<circle cx="333" cy="220" r="43" fill="#FFFFFF"/>
+<circle cx="333" cy="220" r="34" fill="#0F7A4A"/></svg>

@@ -8,6 +8,7 @@
   --muted: #8b94a3;
   --muted-2: #5d6572;
   --safe: #3dd68c;
+  --ama: #f4c542; /* Amarillo Carril: detalle y guía de la marca; no indica severidad */
   --warn: #f5a623;
   --danger: #e5484d;
   --safe-bg: rgba(61, 214, 140, 0.12);

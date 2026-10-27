@@ -52,7 +52,7 @@ export default function MapaIncidentes({ datos, riesgo = '', recorridoId = '', a
 
         {visibles.map((d) =>
           d.ruta.length > 1 ? (
-            <Polyline key={`ruta-${d.recorrido.id}`} positions={d.ruta} pathOptions={{ color: '#5b8bd6', weight: 3, opacity: 0.8 }} />
+            <Polyline key={`ruta-${d.recorrido.id}`} positions={d.ruta} pathOptions={{ color: '#E7EAEF', weight: 3, opacity: 0.85, dashArray: '10 8' }} />
           ) : null
         )}
 
@@ -63,7 +63,7 @@ export default function MapaIncidentes({ datos, riesgo = '', recorridoId = '', a
               key={`curso-${d.recorrido.id}`}
               center={d.ruta[d.ruta.length - 1]}
               radius={7}
-              pathOptions={{ color: '#0e1015', weight: 2, fillColor: '#5b8bd6', fillOpacity: 1 }}
+              pathOptions={{ color: '#0e1015', weight: 2, fillColor: '#E7EAEF', fillOpacity: 1 }}
             >
               <Popup>
                 <b>Recorrido en curso</b><br />
@@ -97,7 +97,7 @@ export default function MapaIncidentes({ datos, riesgo = '', recorridoId = '', a
         {['bajo', 'medio', 'alto'].map((k) => (
           <span key={k}><i style={{ background: RIESGO[k].color }} />{RIESGO[k].etiqueta}</span>
         ))}
-        <span><i style={{ background: '#5b8bd6' }} />En curso</span>
+        <span><i style={{ background: '#E7EAEF' }} />En curso</span>
       </div>
 
       {datos && conUbicacion.length === 0 && (

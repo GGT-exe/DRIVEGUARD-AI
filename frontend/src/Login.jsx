@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { API_URL, guardarSesion } from './api'
 import './dashboard/dashboard.css'
+import { Eslogan, Imagotipo } from './marca/Marca'
 
 // Historia 18 — pantalla de inicio de sesión del dashboard.
 // Sin ella el navegador no tiene token y todas las rutas protegidas responden 401.
@@ -48,9 +49,9 @@ function Login({ onLogin }) {
   return (
     <main className="login-page">
       <form onSubmit={enviar} className="login-card" aria-label="Inicio de sesión">
-        <div className="brand">
-          <div className="brand-mark" />
-          <div><b>DriveGuard-AI</b><span>Seguridad vial de flota</span></div>
+        <div className="brand login-brand">
+          <Imagotipo alto={44} className="brand-full" />
+          <Eslogan className="brand-slogan" />
         </div>
         <h1>Iniciar sesión</h1>
         <p className="lead">Accede al panel de monitoreo de la flota.</p>
