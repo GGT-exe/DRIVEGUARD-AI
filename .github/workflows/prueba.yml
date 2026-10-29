@@ -1,0 +1,34 @@
+# .github/workflows/backup-db.yml
+# Historia 28 — respaldo automático semanal de la base de datos.
+# Corre todos los domingos a las 3am (UTC) y también se puede disparar
+# manualmente desde la pestaña "Actions" de GitHub (botón "Run workflow").
+
+name: Respaldo de base de datos
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'  # domingos 3:00 AM UTC
+  workflow_dispatch: {}   # permite correrlo a mano para probar
+
+jobs:
+  respaldo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Instalar cliente de PostgreSQL
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Generar el respaldo (pg_dump)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          mkdir -p respaldos
+          nombre="respaldos/driveguard-$(date +%Y-%m-%d).sql"
+          pg_dump "$DATABASE_URL" --no-owner --no-privileges -f "$nombre"
+          echo "Respaldo generado: $nombre"
+
+      - name: Subir el respaldo como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: respaldo-base-de-datos
+          path: respaldos/*.sql
+          retention-days: 90  # GitHub los guarda 90 días; después se borran solos
