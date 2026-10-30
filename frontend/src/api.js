@@ -3,8 +3,7 @@
 // Todas las pantallas del dashboard usan apiFetch para que la petición lleve
 // el token; sin él, las rutas protegidas responden 401.
 
-export const API_URL = import.meta.env.VITE_API_URL
-  || (import.meta.env.DEV ? 'http://localhost:4000' : 'https://driveguard-ai-1yop.onrender.com')
+export const API_URL = import.meta.env.VITE_API_URL || 'https://driveguard-ai-1yop.onrender.com'
 
 const CLAVE_TOKEN = 'token' // ConfiguracionUmbrales.jsx ya lee esta clave
 const CLAVE_USUARIO = 'usuario'
