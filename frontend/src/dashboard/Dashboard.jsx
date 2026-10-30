@@ -155,7 +155,7 @@ function Contenido({ usuario }) {
 
 export default function Dashboard({ usuario }) {
   return (
-    <ProveedorNotificaciones>
+    <ProveedorNotificaciones usuario={usuario}>
       <Contenido usuario={usuario} />
     </ProveedorNotificaciones>
   )

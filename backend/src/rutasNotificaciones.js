@@ -16,9 +16,13 @@ function crearRutasNotificaciones({ prisma, verificarToken }) {
   router.get('/notificaciones', verificarToken, async (req, res) => {
     try {
       const { solo_no_leidas, limite } = req.query;
+      const conductor = req.usuario.rol === 'conductor'
+        ? await prisma.conductores.findUnique({ where: { correo: req.usuario.correo }, select: { id: true } })
+        : null;
       const resultado = await listarNotificaciones(prisma, {
         solo_no_leidas: solo_no_leidas === 'true',
         limite,
+        conductor_id: req.usuario.rol === 'conductor' ? conductor?.id || '__sin_conductor__' : undefined,
       });
       res.json(resultado);
     } catch (error) {
@@ -29,7 +33,14 @@ function crearRutasNotificaciones({ prisma, verificarToken }) {
 
   router.patch('/notificaciones/leer-todas', verificarToken, async (req, res) => {
     try {
-      const actualizadas = await marcarTodasLeidas(prisma, req.usuario.id);
+      const conductor = req.usuario.rol === 'conductor'
+        ? await prisma.conductores.findUnique({ where: { correo: req.usuario.correo }, select: { id: true } })
+        : null;
+      const actualizadas = await marcarTodasLeidas(
+        prisma,
+        req.usuario.id,
+        req.usuario.rol === 'conductor' ? conductor?.id || '__sin_conductor__' : undefined
+      );
       res.json({ actualizadas });
     } catch (error) {
       manejarError(error, 'PATCH /notificaciones/leer-todas');
@@ -43,7 +54,15 @@ function crearRutasNotificaciones({ prisma, verificarToken }) {
       if (!esUuid(id)) {
         return res.status(400).json({ error: 'El id de la notificación no es válido' });
       }
-      const notificacion = await marcarLeida(prisma, id, req.usuario.id);
+      const conductor = req.usuario.rol === 'conductor'
+        ? await prisma.conductores.findUnique({ where: { correo: req.usuario.correo }, select: { id: true } })
+        : null;
+      const notificacion = await marcarLeida(
+        prisma,
+        id,
+        req.usuario.id,
+        req.usuario.rol === 'conductor' ? conductor?.id || '__sin_conductor__' : undefined
+      );
       if (!notificacion) {
         return res.status(404).json({ error: 'Notificación no encontrada' });
       }

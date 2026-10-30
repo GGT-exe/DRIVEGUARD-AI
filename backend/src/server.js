@@ -26,6 +26,14 @@ const { crearRutasAuditoria } = require('./rutasAuditoria');          // Histori
 const { calcularEstadoRecorrido, LIMITE_VELOCIDAD } = require('./nivelSeguridad'); // H27
 const { enteroAcotado, esUuid } = require('./validaciones');                  // H27
 
+async function obtenerConductorUsuario(prisma, usuario) {
+  if (usuario?.rol !== 'conductor') return null;
+  return prisma.conductores.findUnique({
+    where: { correo: usuario.correo },
+    select: { id: true },
+  });
+}
+
 iniciarMonitoreo();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -70,6 +78,9 @@ app.post('/registro', async (req, res) => {
       // El registro público nunca puede crear roles privilegiados.
       data: { nombre, correo, contrasena_hash: hash, rol: 'conductor', activo: true },
     });
+    await prisma.conductores.create({
+      data: { nombre, correo, contrasena_hash: hash },
+    });
     // Historia 23 — el registro es público, así que se guarda el nuevo usuario como actor.
     await registrarAuditoria(prisma, usuario.id, 'registro_usuario', `${usuario.correo} (${usuario.rol})`);
     res.status(201).json({ id: usuario.id, nombre: usuario.nombre, rol: usuario.rol });
@@ -100,6 +111,14 @@ app.post('/login', async (req, res) => {
     if (!passwordValida) {
       await registrarAuditoria(prisma, usuario.id, 'login_fallido', correo);
       return res.status(401).json({ error: 'Credenciales inválidas' });
+    }
+
+    if (usuario.rol === 'conductor') {
+      await prisma.conductores.upsert({
+        where: { correo: usuario.correo },
+        update: { nombre: usuario.nombre, contrasena_hash: usuario.contrasena_hash },
+        create: { nombre: usuario.nombre, correo: usuario.correo, contrasena_hash: usuario.contrasena_hash },
+      });
     }
 
     const token = jwt.sign(
@@ -179,7 +198,12 @@ app.put('/configuracion/:clave', verificarToken, verificarRol('administrador'), 
 
 app.get('/conductores', verificarToken, async (req, res) => {
   try {
+    const conductor = await obtenerConductorUsuario(prisma, req.usuario);
+    const where = req.usuario.rol === 'conductor'
+      ? conductor ? { id: conductor.id } : { id: '__sin_conductor__' }
+      : undefined;
     const conductores = await prisma.conductores.findMany({
+      where,
       select: { id: true, nombre: true },
     });
     res.json(conductores);
@@ -194,7 +218,12 @@ app.get('/recorridos', verificarToken, async (req, res) => {
     // (?limite=100&pagina=1, máximo 500) y se ordena del más reciente al más antiguo.
     const limite = enteroAcotado(req.query.limite, 100, 1, 500);
     const pagina = enteroAcotado(req.query.pagina, 1, 1, 1000000);
+    const conductor = await obtenerConductorUsuario(prisma, req.usuario);
+    const where = req.usuario.rol === 'conductor'
+      ? conductor ? { conductor_id: conductor.id } : { conductor_id: '__sin_conductor__' }
+      : undefined;
     const recorridos = await prisma.recorridos.findMany({
+      where,
       orderBy: { fecha_inicio: 'desc' },
       skip: (pagina - 1) * limite,
       take: limite,
@@ -333,6 +362,14 @@ app.post('/lecturas', async (req, res) => {
 app.get('/recorridos/:id/nivel-seguridad', verificarToken, async (req, res) => {
   try {
     const { id } = req.params;
+    if (req.usuario.rol === 'conductor') {
+      const conductor = await obtenerConductorUsuario(prisma, req.usuario);
+      const recorrido = conductor && await prisma.recorridos.findFirst({
+        where: { id, conductor_id: conductor.id },
+        select: { id: true },
+      });
+      if (!recorrido) return res.status(403).json({ error: 'No tienes acceso a este recorrido' });
+    }
 
     // H27: la base de datos cuenta (4 COUNT en paralelo, con índice) en vez de
     // traer todas las lecturas a memoria. La respuesta es idéntica a la anterior.
@@ -394,6 +431,14 @@ app.post('/gps', async (req, res) => {
 app.get('/recorridos/:id/gps', verificarToken, async (req, res) => {
   try {
     const { id } = req.params;
+    if (req.usuario.rol === 'conductor') {
+      const conductor = await obtenerConductorUsuario(prisma, req.usuario);
+      const recorrido = conductor && await prisma.recorridos.findFirst({
+        where: { id, conductor_id: conductor.id },
+        select: { id: true },
+      });
+      if (!recorrido) return res.status(403).json({ error: 'No tienes acceso a este recorrido' });
+    }
 
     const puntos = await prisma.$queryRaw`
       SELECT
@@ -434,6 +479,10 @@ app.get('/incidentes/historial', verificarToken, async (req, res) => {
       JOIN conductores c ON r.conductor_id = c.id
       LEFT JOIN vehiculos v ON r.vehiculo_id = v.id
     `;
+    if (req.usuario.rol === 'conductor') {
+      condiciones.push(`r.conductor_id = (SELECT id FROM conductores WHERE correo = $${idx++})`);
+      valores.push(req.usuario.correo);
+    }
 
     // Prisma envía los parámetros como texto: PostgreSQL necesita la conversión
     // explícita a uuid / timestamp o responde "operator does not exist".
@@ -526,6 +575,14 @@ app.get('/vehiculos/tipos', verificarToken, async (req, res) => {
 app.get('/recorridos/:id/incidentes-mapa', verificarToken, async (req, res) => {
   try {
     const { id } = req.params;
+    if (req.usuario.rol === 'conductor') {
+      const conductor = await obtenerConductorUsuario(prisma, req.usuario);
+      const recorrido = conductor && await prisma.recorridos.findFirst({
+        where: { id, conductor_id: conductor.id },
+        select: { id: true },
+      });
+      if (!recorrido) return res.status(403).json({ error: 'No tienes acceso a este recorrido' });
+    }
     const incidentes = await prisma.$queryRaw`
       SELECT
         i.id,

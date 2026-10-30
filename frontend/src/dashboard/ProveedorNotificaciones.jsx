@@ -18,7 +18,7 @@ const TITULOS = {
   incidentes_repetidos: 'Incidentes repetidos',
 }
 
-export default function ProveedorNotificaciones({ children }) {
+export default function ProveedorNotificaciones({ children, usuario }) {
   const [guardadas, setGuardadas] = useState([])
   const [enVivo, setEnVivo] = useState([])
   const [conductores, setConductores] = useState({})
@@ -53,7 +53,16 @@ export default function ProveedorNotificaciones({ children }) {
 
     socket.on('connect', () => {
       setConectado(true)
-      socket.emit('registrar_supervisor')
+      if (usuario?.rol === 'conductor') {
+        apiFetch('/conductores')
+          .then((r) => (r.ok ? r.json() : []))
+          .then((lista) => {
+            if (lista[0]?.id) socket.emit('registrar_conductor', lista[0].id)
+          })
+          .catch(() => {})
+      } else {
+        socket.emit('registrar_supervisor')
+      }
       cargar() // al reconectar recupera lo que llegó sin conexión
     })
     socket.on('disconnect', () => setConectado(false))
@@ -62,15 +71,17 @@ export default function ProveedorNotificaciones({ children }) {
       setGuardadas((previas) => (previas.some((n) => n.id === nueva.id) ? previas : [nueva, ...previas].slice(0, MAX)))
     })
 
-    socket.on('alerta_flota', (data) => {
+    const recibirAlerta = (data) => {
       setEnVivo((previas) => {
         if (data.alertaId && previas.some((a) => a.alertaId === data.alertaId)) return previas
         return [{ ...data, recibidaEn: new Date(), leida: false }, ...previas].slice(0, MAX)
       })
-    })
+    }
+    socket.on('alerta_flota', recibirAlerta)
+    socket.on('alerta', recibirAlerta)
 
     return () => socket.disconnect()
-  }, [cargar])
+  }, [cargar, usuario])
 
   const items = useMemo(() => {
     const deServidor = guardadas.map((n) => ({

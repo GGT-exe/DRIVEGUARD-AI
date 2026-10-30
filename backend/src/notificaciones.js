@@ -123,28 +123,32 @@ async function evaluarRecorrido(prisma, { recorrido_id, conductor_id } = {}, dep
 
 // ---- Consulta y estado leído / no leído (centro de notificaciones del dashboard) ----
 
-async function listarNotificaciones(prisma, { solo_no_leidas = false, limite } = {}) {
+async function listarNotificaciones(prisma, { solo_no_leidas = false, limite, conductor_id } = {}) {
   const take = enteroAcotado(limite, 50, 1, 200);
-  const where = solo_no_leidas ? { leida: false } : {};
+  const where = {
+    ...(solo_no_leidas ? { leida: false } : {}),
+    ...(conductor_id ? { conductor_id } : {}),
+  };
   const [notificaciones, totalNoLeidas] = await Promise.all([
     prisma.notificaciones.findMany({ where, orderBy: { fecha: 'desc' }, take }),
-    prisma.notificaciones.count({ where: { leida: false } }),
+    prisma.notificaciones.count({ where: { ...where, leida: false } }),
   ]);
   return { total_no_leidas: totalNoLeidas, notificaciones };
 }
 
-async function marcarLeida(prisma, id, usuario_id) {
+async function marcarLeida(prisma, id, usuario_id, conductor_id) {
   const existente = await prisma.notificaciones.findUnique({ where: { id } });
   if (!existente) return null;
+  if (conductor_id && existente.conductor_id !== conductor_id) return null;
   return prisma.notificaciones.update({
     where: { id },
     data: { leida: true, fecha_lectura: new Date(), leida_por: usuario_id || null },
   });
 }
 
-async function marcarTodasLeidas(prisma, usuario_id) {
+async function marcarTodasLeidas(prisma, usuario_id, conductor_id) {
   const r = await prisma.notificaciones.updateMany({
-    where: { leida: false },
+    where: { leida: false, ...(conductor_id ? { conductor_id } : {}) },
     data: { leida: true, fecha_lectura: new Date(), leida_por: usuario_id || null },
   });
   return r.count;

@@ -7,6 +7,7 @@ const { randomUUID } = require('node:crypto');
 
 const DEFAULTS = {
   usuarios: () => ({ activo: true, rol: 'supervisor', fecha_registro: new Date() }),
+  conductores: () => ({ fecha_registro: new Date() }),
   notificaciones: () => ({
     leida: false, fecha: new Date(), fecha_lectura: null, leida_por: null, conductor_id: null, recorrido_id: null,
   }),
@@ -71,6 +72,16 @@ function crearModelo(nombre, filas) {
     },
     async create({ data }) {
       const fila = { id: randomUUID(), ...base(), ...data };
+      filas.push(fila);
+      return { ...fila };
+    },
+    async upsert({ where, update, create }) {
+      const existente = filas.find((x) => coincide(x, where));
+      if (existente) {
+        Object.assign(existente, update);
+        return { ...existente };
+      }
+      const fila = { id: randomUUID(), ...base(), ...create };
       filas.push(fila);
       return { ...fila };
     },
