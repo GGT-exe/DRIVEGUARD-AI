@@ -2,9 +2,8 @@ const axios = require('axios');
 
 let velocidadActual = 60;
 
-// NUEVO — id del conductor de prueba. Debe coincidir con el que registres
-// en cliente-prueba-conductor.html (CONDUCTOR_ID) para ver la alerta ahí.
-const CONDUCTOR_ID = "conductor-prueba-1";
+// ID real del conductor asociado al recorrido que se está simulando.
+const CONDUCTOR_ID = "821e0fde-20bd-45d3-aceb-d67ce90d3374";
 
 function generarDatoVehiculo() {
     let aceleracion;
@@ -45,8 +44,8 @@ function detectarObstaculo(distancia) {
     return distancia < UMBRAL_RIESGO;
 }
 
-// IMPORTANTE: reemplaza esto por el ID real del recorrido creado en la base de datos
-const RECORRIDO_ID = "d982b26e-5a7f-4238-9b4e-2d0ec08e2257";
+// ID real del recorrido creado en la base de datos.
+const RECORRIDO_ID = "7c3a30f8-fd69-42f6-9e55-dedd14135e2f";
 
 setInterval(async () => {
     const dato = generarDatoVehiculo();

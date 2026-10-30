@@ -6,6 +6,7 @@
 1. Abre la aplicación y escribe tu **correo** y **contraseña**; pulsa **Ingresar**.
 2. Si los datos son incorrectos verás “Correo o contraseña incorrectos”. Si el servidor está dormido (plan gratuito) la primera vez puede tardar hasta un minuto.
 3. Arriba a la izquierda aparece tu nombre y rol. **Cerrar sesión** te devuelve al login. La sesión vence a las 8 horas y la app te lleva sola al login.
+4. Si aún no tienes cuenta, pulsa **Crear una cuenta nueva**. El registro público crea un usuario con rol **conductor**; los roles privilegiados no se pueden elegir desde este formulario.
 
 ### Pestañas según el rol
 El menú de la izquierda muestra solo lo que tu rol puede usar. Si escribes en la dirección una pestaña que no te corresponde (por ejemplo `#auditoria`), te lleva al Inicio.
@@ -61,7 +62,7 @@ Base: `https://driveguard-ai-1yop.onrender.com`. Autenticación: cabecera `Autho
 | Método y ruta | Rol | Descripción |
 |---|---|---|
 | `POST /login` `{correo, contrasena}` | público | Devuelve `{token, usuario}` |
-| `POST /registro` | público* | Crea usuario (*ver hallazgos H26) |
+| `POST /registro` `{nombre, correo, contrasena}` | público | Crea un usuario con rol `conductor`; el rol enviado por el cliente se ignora |
 | `GET /configuracion` | sesión | Lista `[{clave, valor}]` |
 | `PUT /configuracion/:clave` `{valor}` | administrador | Cambia un umbral (auditado) |
 | `GET /conductores`, `GET /vehiculos/tipos` | sesión | Catálogos |
@@ -82,4 +83,4 @@ Base: `https://driveguard-ai-1yop.onrender.com`. Autenticación: cabecera `Autho
 
 Eventos Socket.io: `alerta` (a `conductor:<id>`), `alerta_flota` y `notificacion` (a la sala `supervisores`, registrada con `registrar_supervisor`).
 
-Roles: `administrador` (también acepta `admin`), `gerente`, `supervisor`. La comparación de roles ignora mayúsculas y normaliza `admin` → `administrador`.
+Roles: `administrador` (también acepta `admin`), `gerente`, `supervisor`, `conductor`. La comparación de roles ignora mayúsculas y normaliza `admin` → `administrador`.

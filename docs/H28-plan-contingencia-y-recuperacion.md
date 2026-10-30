@@ -13,7 +13,7 @@
 |---|---|---|---|
 | Servidor dormido | Primera petición tarda ~1 min | Esperar; opcional: ping periódico a `/` | 1–2 min |
 | Deploy fallido | Render “Failed” | Ver logs; confirmar Root Directory `backend`, build `npm install && npx prisma generate`, start `node src/server.js`; hacer *Rollback* al último deploy bueno | 15 min |
-| Base expirada o perdida | 500 en todo, logs con error de conexión | Crear Postgres nuevo → `CREATE EXTENSION IF NOT EXISTS postgis;` → `npx prisma db push` → `node src/sembrar-umbrales.js` → actualizar `DATABASE_URL` → redeploy → registrar admin | 30 min |
+| Base expirada o perdida | 500 en todo, logs con error de conexión | Crear Postgres nuevo → `CREATE EXTENSION IF NOT EXISTS postgis;` → `npx prisma db push` → `node src/sembrar-umbrales.js` → actualizar `DATABASE_URL` → redeploy → crear el administrador mediante el procedimiento interno protegido (el registro público solo crea supervisores) | 30 min |
 | Credenciales filtradas | Aviso o sospecha | Rotar `JWT_SECRET`, contraseñas de BD y SMTP en Render; los tokens viejos dejan de valer | 15 min |
 | Correo caído | Aviso `[correo]` en logs | Nada urgente: las notificaciones siguen guardadas y en vivo; corregir credenciales | — |
 | Error inesperado en producción | Alerta de Sentry | Revisar el evento, reproducir, corregir, redeploy | según prioridad H26 |

@@ -76,9 +76,12 @@ test('login incorrecto da 401 y queda como login_fallido', async () => {
 });
 
 test('registro crea usuario y lo audita', async () => {
-  const r = await pedir(url, '/registro', { metodo: 'POST', cuerpo: { nombre: 'Nuevo', correo: 'nuevo@test.co', contrasena: 'abc12345' } });
+  const r = await pedir(url, '/registro', {
+    metodo: 'POST',
+    cuerpo: { nombre: 'Nuevo', correo: 'nuevo@test.co', contrasena: 'abc12345', rol: 'administrador' },
+  });
   assert.equal(r.status, 201);
-  assert.equal(r.json.rol, 'supervisor');
+  assert.equal(r.json.rol, 'conductor');
   assert.ok(fake.tablas.auditoria.some((a) => a.accion === 'registro_usuario' && /nuevo@test.co/.test(a.detalle)));
 });
 

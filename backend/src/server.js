@@ -57,17 +57,18 @@ const requireRol = verificarRol;
 // Historia 18 — registro e inicio de sesión seguro al dashboard
 // ============================================================
 
-// Crea un usuario del dashboard. Déjalo abierto hasta tener el primer admin
-// creado a mano; luego protégelo con verificarToken + requireRol('admin').
+// Registro público: crea únicamente conductores. Los roles privilegiados se
+// administran fuera de este endpoint.
 app.post('/registro', async (req, res) => {
   try {
-    const { nombre, correo, contrasena, rol } = req.body;
+    const { nombre, correo, contrasena } = req.body;
     if (!nombre || !correo || !contrasena) {
       return res.status(400).json({ error: 'nombre, correo y contrasena son obligatorios' });
     }
     const hash = await hashPassword(contrasena);
     const usuario = await prisma.usuarios.create({
-      data: { nombre, correo, contrasena_hash: hash, rol: rol || 'supervisor', activo: true },
+      // El registro público nunca puede crear roles privilegiados.
+      data: { nombre, correo, contrasena_hash: hash, rol: 'conductor', activo: true },
     });
     // Historia 23 — el registro es público, así que se guarda el nuevo usuario como actor.
     await registrarAuditoria(prisma, usuario.id, 'registro_usuario', `${usuario.correo} (${usuario.rol})`);
